@@ -48,7 +48,7 @@ func InitTokenDB(datadir string) error{
 		return err
 	}else{
 		tokenDB = token
-		initedToken = true;
+		initedToken = true
 		log.Info("Init tokenDB")
 		return nil
 	}
