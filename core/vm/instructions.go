@@ -22,6 +22,8 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
+	"math/big"
+	"strconv"
 )
 
 func opAdd(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]byte, error) {
@@ -614,7 +616,11 @@ func opCreate(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]
 		bigVal = value.ToBig()
 	}
 
+	callTx := initOp("create", callContext.contract.Address(), common.Address{}, common.Address{}, gas, *value.ToBig())
+	newIndex := beforeOp(interpreter, callTx)
 	res, addr, returnGas, suberr := interpreter.evm.Create(callContext.contract, input, gas, bigVal)
+	afterCreate(interpreter, newIndex,  callTx, addr, suberr)
+
 	// Push item on the stack based on the returned error. If the ruleset is
 	// homestead we must check for CodeStoreOutOfGasError (homestead only
 	// rule) and treat as an error, if the ruleset is frontier we must
@@ -654,8 +660,13 @@ func opCreate2(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([
 	if !endowment.IsZero() {
 		bigEndowment = endowment.ToBig()
 	}
+
+	callTx := initOp("create2", callContext.contract.Address(), common.Address{}, common.Address{}, gas, *endowment.ToBig())
+	newIndex := beforeOp(interpreter, callTx)
 	res, addr, returnGas, suberr := interpreter.evm.Create2(callContext.contract, input, gas,
 		bigEndowment, &salt)
+	afterCreate(interpreter, newIndex,  callTx, addr, suberr)
+
 	// Push item on the stack based on the returned error.
 	if suberr != nil {
 		stackvalue.Clear()
@@ -692,7 +703,10 @@ func opCall(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]by
 		bigVal = value.ToBig()
 	}
 
+	callTx := initOp("call", callContext.contract.Address(), toAddr, common.Address{}, gas, *value.ToBig())
+	newIndex := beforeOp(interpreter, callTx)
 	ret, returnGas, err := interpreter.evm.Call(callContext.contract, toAddr, args, gas, bigVal)
+	afterCall(interpreter, newIndex, *value.ToBig(), err, callTx)
 
 	if err != nil {
 		temp.Clear()
@@ -727,7 +741,11 @@ func opCallCode(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) (
 		bigVal = value.ToBig()
 	}
 
+	callTx := initOp("callcode", callContext.contract.Address(), toAddr, toAddr, gas, *value.ToBig())
+	newIndex := beforeOp(interpreter, callTx)
 	ret, returnGas, err := interpreter.evm.CallCode(callContext.contract, toAddr, args, gas, bigVal)
+	afterCall(interpreter, newIndex, *value.ToBig(), err, callTx)
+
 	if err != nil {
 		temp.Clear()
 	} else {
@@ -754,7 +772,13 @@ func opDelegateCall(pc *uint64, interpreter *EVMInterpreter, callContext *callCt
 	// Get arguments from the memory.
 	args := callContext.memory.GetPtr(int64(inOffset.Uint64()), int64(inSize.Uint64()))
 
+	callTx := initOp("delegatecall", callContext.contract.Address(), toAddr, toAddr, gas, *big.NewInt(0))
+	newIndex := beforeOp(interpreter, callTx)
 	ret, returnGas, err := interpreter.evm.DelegateCall(callContext.contract, toAddr, args, gas)
+	callTx.TraceAddress = callContext.contract.CallerAddress.Hash().String()
+	callTx.ValueWei = callContext.contract.value.String()
+	afterCall(interpreter, newIndex, *big.NewInt(0), err, callTx)
+
 	if err != nil {
 		temp.Clear()
 	} else {
@@ -781,7 +805,11 @@ func opStaticCall(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx)
 	// Get arguments from the memory.
 	args := callContext.memory.GetPtr(int64(inOffset.Uint64()), int64(inSize.Uint64()))
 
+	callTx := initOp("staticcall", callContext.contract.Address(), toAddr, common.Address{}, gas , *big.NewInt(0))
+	newIndex := beforeOp(interpreter, callTx)
 	ret, returnGas, err := interpreter.evm.StaticCall(callContext.contract, toAddr, args, gas)
+	afterCall(interpreter, newIndex, *big.NewInt(0), err, callTx)
+
 	if err != nil {
 		temp.Clear()
 	} else {
@@ -816,9 +844,15 @@ func opStop(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]by
 
 func opSuicide(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]byte, error) {
 	beneficiary := callContext.stack.pop()
+	toAddr := common.Address(beneficiary.Bytes20())
 	balance := interpreter.evm.StateDB.GetBalance(callContext.contract.Address())
-	interpreter.evm.StateDB.AddBalance(beneficiary.Bytes20(), balance)
+	interpreter.evm.StateDB.AddBalance(toAddr, balance)
+
+	callTx := initOp("suicide", callContext.contract.Address(), toAddr, common.Address{},0, *balance)
+	newIndex := beforeOp(interpreter, callTx)
 	interpreter.evm.StateDB.Suicide(callContext.contract.Address())
+	afterSuicide(interpreter, newIndex, callTx)
+
 	return nil, nil
 }
 
@@ -904,4 +938,101 @@ func makeSwap(size int64) executionFunc {
 		callContext.stack.swap(int(size))
 		return nil, nil
 	}
+}
+
+func beforeOp(interpreter *EVMInterpreter, callTx *InnerTx) int{
+	if interpreter.evm.lastDepth == interpreter.evm.depth {
+		interpreter.evm.index++
+		interpreter.evm.indexMap[interpreter.evm.depth] = interpreter.evm.index
+	} else if interpreter.evm.depth < interpreter.evm.lastDepth {
+		interpreter.evm.index = interpreter.evm.indexMap[interpreter.evm.depth] + 1
+		interpreter.evm.indexMap[interpreter.evm.depth] = interpreter.evm.index
+		interpreter.evm.lastDepth = interpreter.evm.depth} else if interpreter.evm.depth > interpreter.evm.lastDepth {interpreter.evm.index = 0
+		interpreter.evm.indexMap[interpreter.evm.depth] = 0
+		interpreter.evm.lastDepth = interpreter.evm.depth
+	}
+	for i := 1; i <= interpreter.evm.lastDepth; i++ {
+		callTx.Name = callTx.Name + "_" + strconv.Itoa(interpreter.evm.indexMap[i])
+	}
+	callTx.Name = callTx.CallType + callTx.Name
+	callTx.Dept = *big.NewInt(int64(interpreter.evm.depth))
+	callTx.InternalIndex = *big.NewInt(int64(interpreter.evm.index))
+	interpreter.evm.InnerTxies = append(interpreter.evm.InnerTxies, callTx)
+	newIndex := len(interpreter.evm.InnerTxies) - 1
+	if newIndex < 0 {
+		newIndex = 0
+	}
+	return newIndex
+}
+
+func afterSuicide(interpreter *EVMInterpreter, newIndex int, callTx *InnerTx) {
+	interpreter.evm.useMap[newIndex] = true
+	callTx.IsError = false
+}
+
+func afterCall(interpreter *EVMInterpreter, newIndex int, value big.Int, err error, callTx *InnerTx) {
+	nextUseful, _ := interpreter.evm.useMap[newIndex + 1]
+	if nextUseful == false && value.Cmp(big.NewInt(0)) == 0 {
+		interpreter.evm.InnerTxies = interpreter.evm.InnerTxies[:newIndex]
+		interpreter.evm.useMap[newIndex] = false
+	} else{
+		interpreter.evm.useMap[newIndex] = true
+	}
+
+	if err == nil {
+		callTx.IsError = false
+	} else {
+		subTxies := interpreter.evm.InnerTxies[newIndex:]
+		for _, tx := range subTxies {
+			tx.IsError = true
+		}
+	}
+}
+
+func afterCreate(interpreter *EVMInterpreter, newIndex int,callTx *InnerTx, addr common.Address, suberr error) {
+	//添加to地址
+	callTx.To = addr.Hash().String()
+	interpreter.evm.useMap[newIndex] = true
+	if suberr == nil {
+		callTx.IsError = false
+	} else {
+		subTxies := interpreter.evm.InnerTxies[newIndex:]
+		for _, tx := range subTxies {
+			tx.IsError = true
+		}
+	}
+}
+
+func initOp(name string, fromAddr common.Address, toAddr common.Address, codeAddr common.Address, gas uint64, value big.Int) *InnerTx{
+	callTx := &InnerTx{
+		CallType:     name,
+		From:         fromAddr.Hash().String(),
+	}
+	switch name {
+		case "create":
+			callTx.ValueWei = value.String()
+			callTx.GasUsed = gas
+		case "create2":
+			callTx.ValueWei = value.String()
+			callTx.GasUsed = gas
+		case "call":
+			callTx.ValueWei = value.String()
+			callTx.GasUsed = gas
+			callTx.To = toAddr.Hash().String()
+		case "staticcall":
+			callTx.GasUsed = gas
+			callTx.To = toAddr.Hash().String()
+		case "callcode":
+			callTx.ValueWei = value.String()
+			callTx.GasUsed = gas
+			callTx.To = toAddr.Hash().String()
+			callTx.CodeAddress = codeAddr.Hash().String()
+		case "delegatecall":
+			callTx.GasUsed = gas
+			callTx.To = toAddr.Hash().String()
+		case "suicide":
+			callTx.ValueWei = value.String()
+			callTx.To = toAddr.Hash().String()
+		}
+	return callTx
 }

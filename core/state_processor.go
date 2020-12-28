@@ -69,6 +69,15 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 	blockContext := NewEVMBlockContext(header, p.bc, nil)
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
+
+	//init internalTx
+	var innerBlockData = &vm.BlockInnerData {
+		BlockHash :block.Hash().Hex(),
+		TxHashes : make([]string,0),
+		TxMap : make(map[string][]*vm.InnerTx),
+		ContractList : make([]*vm.ERC20Contract,0),
+	}
+
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions() {
 		msg, err := tx.AsMessage(types.MakeSigner(p.config, header.Number))
@@ -76,20 +85,65 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			return nil, nil, 0, err
 		}
 		statedb.Prepare(tx.Hash(), block.Hash(), i)
-		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, header, tx, usedGas, vmenv)
+		receipt, err, innerTxs, erc20s := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, header, tx, usedGas, vmenv)
+
+		//add InnerTx
+		if innerTxs != nil {
+			innerBlockData.TxHashes = append(innerBlockData.TxHashes, tx.Hash().Hex())
+			innerBlockData.TxMap[tx.Hash().Hex()] = innerTxs
+		}
+		//add InnerTx end
+
+		//add Contract
+		if erc20s != nil && len(erc20s) > 0{
+			innerBlockData.ContractList = append(innerBlockData.ContractList, erc20s...)
+		}
+		//add Contract end
+
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 		receipts = append(receipts, receipt)
 		allLogs = append(allLogs, receipt.Logs...)
 	}
+
+	//Block write db
+	if len(innerBlockData.TxHashes) > 0 {
+		if err := vm.WriteBlockDB(innerBlockData.BlockHash, innerBlockData.TxHashes); err != nil{
+			return nil, nil, 0, err
+		}
+	}
+	//Block write db end
+
+	//InnerTx write db
+	if len(innerBlockData.TxMap) > 0{
+		for txHash, inTx := range innerBlockData.TxMap {
+			//fmt.Println(txHash)
+			if err := vm.WriteTx(txHash, inTx); err != nil{
+				return nil, nil, 0, err
+			}
+		}
+	}
+
+	//InnerTx write db end
+
+	//Contract write db
+	if len(innerBlockData.ContractList) > 0 {
+		for _, contract := range innerBlockData.ContractList {
+			if err := vm.WriteToken(contract.ContractAddr, contract.ContractCode); err != nil {
+				return nil, nil, 0, err
+			}
+		}
+	}
+	//Contract write db end
+
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	p.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles())
 
 	return receipts, allLogs, *usedGas, nil
 }
 
-func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (*types.Receipt, error) {
+func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (*types.Receipt, error, []*vm.InnerTx, []*vm.ERC20Contract) {
 	// Create a new context to be used in the EVM environment
 	txContext := NewEVMTxContext(msg)
 	// Add addresses to access list if applicable
@@ -109,7 +163,7 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 	// Apply the transaction to the current state (included in the env)
 	result, err := ApplyMessage(evm, msg, gp)
 	if err != nil {
-		return nil, err
+		return nil, err, nil, nil
 	}
 	// Update the state with pending changes
 	var root []byte
@@ -136,20 +190,42 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 	receipt.BlockNumber = header.Number
 	receipt.TransactionIndex = uint(statedb.TxIndex())
 
-	return receipt, err
+	innerTxs, erc20s := afterApplyTransaction(evm, result.Failed())
+	return receipt, err, innerTxs, erc20s
 }
+
+
 
 // ApplyTransaction attempts to apply a transaction to the given state database
 // and uses the input parameters for its environment. It returns the receipt
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
-func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, error) {
+func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, error, []*vm.InnerTx, []*vm.ERC20Contract) {
 	msg, err := tx.AsMessage(types.MakeSigner(config, header.Number))
 	if err != nil {
-		return nil, err
+		return nil, err, nil, nil
 	}
 	// Create a new context to be used in the EVM environment
 	blockContext := NewEVMBlockContext(header, bc, author)
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, config, cfg)
 	return applyTransaction(msg, config, bc, author, gp, statedb, header, tx, usedGas, vmenv)
+}
+
+func afterApplyTransaction(vmenv *vm.EVM, failed bool) ([]*vm.InnerTx, []*vm.ERC20Contract){
+	innerTxs := checkTransaction(vmenv, failed)
+	erc20s := vmenv.Contracts
+	return innerTxs, erc20s
+}
+
+func checkTransaction(vmenv *vm.EVM, failed bool) []*vm.InnerTx{
+	if failed == true {
+		for _, errIx := range vmenv.InnerTxies {
+			errIx.IsError = true
+		}
+		return vmenv.InnerTxies
+	}else if len(vmenv.InnerTxies) > 1 {
+		return vmenv.InnerTxies
+	}else {
+		return nil
+	}
 }

@@ -19,6 +19,7 @@ package node
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -159,6 +160,13 @@ func (n *Node) Start() error {
 		return ErrNodeStopped
 	}
 	n.state = runningState
+
+	//初始化内部交易数据库
+	if err := vm.InitDB(n.config.DataDir); err != nil {
+		return err
+	}
+	//初始化内部交易数据库 end
+
 	err := n.startNetworking()
 	lifecycles := make([]Lifecycle, len(n.lifecycles))
 	copy(lifecycles, n.lifecycles)
@@ -204,6 +212,11 @@ func (n *Node) Close() error {
 		if err := n.stopServices(n.lifecycles); err != nil {
 			errs = append(errs, err)
 		}
+
+		//关闭内部交易数据库
+		vm.CloseDB()
+		//关闭内部交易数据库 end
+
 		return n.doClose(errs)
 	case closedState:
 		return ErrNodeStopped

@@ -18,7 +18,12 @@ package vm
 
 import (
 	"errors"
+	"fmt"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rlp"
 	"math/big"
+	"reflect"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -154,6 +159,13 @@ type EVM struct {
 	// available gas is calculated in gasCall* according to the 63/64 rule and later
 	// applied in opCall*.
 	callGasTemp uint64
+
+	index int
+	lastDepth int
+	indexMap map[int]int
+	useMap map[int]bool
+	InnerTxies []*InnerTx
+	Contracts []*ERC20Contract
 }
 
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
@@ -167,6 +179,14 @@ func NewEVM(blockCtx BlockContext, txCtx TxContext, statedb StateDB, chainConfig
 		chainConfig:  chainConfig,
 		chainRules:   chainConfig.Rules(blockCtx.BlockNumber),
 		interpreters: make([]Interpreter, 0, 1),
+
+		depth: 0,
+		index: 0,
+		lastDepth: 0,
+		indexMap: map[int]int{0:0},
+		useMap: map[int]bool{0:true},
+		InnerTxies: make([]*InnerTx,0),
+		Contracts: make([]*ERC20Contract,0),
 	}
 
 	if chainConfig.IsEWASM(blockCtx.BlockNumber) {
@@ -198,6 +218,15 @@ func NewEVM(blockCtx BlockContext, txCtx TxContext, statedb StateDB, chainConfig
 func (evm *EVM) Reset(txCtx TxContext, statedb StateDB) {
 	evm.TxContext = txCtx
 	evm.StateDB = statedb
+}
+
+
+func (evm *EVM) GetDepth() int {
+	return evm.depth
+}
+
+func (evm *EVM) GetIndex() int {
+	return evm.index
 }
 
 // Cancel cancels any running EVM operation. This may be called concurrently and
@@ -509,6 +538,13 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	if evm.vmConfig.Debug && evm.depth == 0 {
 		evm.vmConfig.Tracer.CaptureEnd(ret, gas-contract.Gas, time.Since(start), err)
 	}
+
+	//调用  by wyx
+	erc20 := runEthCall(evm,contract)
+	if(erc20 != nil){
+		evm.Contracts = append(evm.Contracts, erc20)
+	}
+
 	return ret, address, contract.Gas, err
 
 }
@@ -531,3 +567,134 @@ func (evm *EVM) Create2(caller ContractRef, code []byte, gas uint64, endowment *
 
 // ChainConfig returns the environment's chain configuration
 func (evm *EVM) ChainConfig() *params.ChainConfig { return evm.chainConfig }
+
+
+func runEthCall(evm *EVM, contract *Contract) *ERC20Contract {
+	//startTime := (time.Now().UnixNano() / 1e6)
+	//判断
+	if contract == nil {
+		return nil
+	}
+
+	//判断
+	if !(strings.Contains(hexutil.Bytes(contract.Code).String(), "a9059cbb") &&
+		strings.Contains(hexutil.Bytes(contract.Code).String(), "ddf252ad") &&
+		strings.Contains(hexutil.Bytes(contract.Code).String(), "70a08231")) {
+		//不是ERC20合约（有transfer方法和事件,balanceOf方法的表示就是token）
+		return nil
+	}
+	defer func(){
+		if e := recover(); e != nil {
+			fmt.Printf(" runEthCalError recover type =[%v]\n\tvalue=[%v]\n", reflect.TypeOf(e), reflect.ValueOf(e))
+		}
+	}()
+	var version = evm.StateDB.Snapshot()
+
+	//组织参数
+	ownerAddr := contract.CallerAddress
+	contractAddr := contract.Address()
+	gasTemp := new(big.Int).SetUint64(uint64(9223372036854754535))
+	bigTemp := new(big.Int).SetUint64(uint64(0))
+	contractTemp := NewContract(
+			AccountRef(common.HexToAddress("0x0000000000000000000000000000000000000000")),
+			AccountRef(contract.Address()),
+			bigTemp,
+			gasTemp.Uint64())
+	contractTemp.SetCallCode(&contractAddr, evm.StateDB.GetCodeHash(contractAddr), evm.StateDB.GetCode(contractAddr))
+	//获取
+	nameRet,_ := hexutil.Decode("0x")
+	if strings.Contains(hexutil.Bytes(contractTemp.Code).String(), "06fdde03") &&
+		compareStr(hexutil.Bytes(contractTemp.Code).String(), "06fdde03") {
+			nameStr,err := hexutil.Decode("0x06fdde03")
+			if evm.Interpreter().CanRun(contract.Code) {
+				nameRet, err = evm.Interpreter().Run(contractTemp, nameStr, false)
+			}
+			if err !=nil {}
+			//var nameRetStr string
+			//rlp.DecodeBytes(nameRet,nameRetStr)
+		}
+
+	symbleRet,_ := hexutil.Decode("0x")
+	if strings.Contains(hexutil.Bytes(contractTemp.Code).String(), "95d89b41") &&
+		compareStr(hexutil.Bytes(contractTemp.Code).String(), "95d89b41") {
+			symbleStr,err := hexutil.Decode("0x95d89b41")
+			if evm.Interpreter().CanRun(contract.Code) {
+					symbleRet, err = evm.Interpreter().Run(contractTemp, symbleStr, false)
+				}
+			if err !=nil {}
+		}
+
+	decimalsRet,_ := hexutil.Decode("0x")
+	if strings.Contains(hexutil.Bytes(contractTemp.Code).String(), "313ce567") &&
+		compareStr(hexutil.Bytes(contractTemp.Code).String(), "313ce567") {
+			decimalsStr, err := hexutil.Decode("0x313ce567")
+			if evm.Interpreter().CanRun(contract.Code) {
+					decimalsRet, err = evm.Interpreter().Run(contractTemp, decimalsStr, false)
+				}
+			if err !=nil {}
+		}
+
+	totalSupplyRet,_ := hexutil.Decode("0x")
+	if strings.Contains(hexutil.Bytes(contractTemp.Code).String(), "18160ddd") &&
+		compareStr(hexutil.Bytes(contractTemp.Code).String(), "18160ddd") {
+			totalSupplyStr,err := hexutil.Decode("0x18160ddd")
+			if evm.Interpreter().CanRun(contract.Code) {
+					totalSupplyRet, err = evm.Interpreter().Run(contractTemp, totalSupplyStr, false)
+				}
+			if err !=nil {}
+		}
+
+	var balanceOfRet,_ = hexutil.Decode("0x")
+	if strings.Contains(hexutil.Bytes(contractTemp.Code).String(), "70a08231") &&
+		compareStr(hexutil.Bytes(contractTemp.Code).String(), "70a08231") {
+			balanceOfStr,err := hexutil.Decode("0x70a08231000000000000000000000000" +
+				strings.ToLower(string([]byte(ownerAddr.Hex())[2:])))
+			if evm.Interpreter().CanRun(contract.Code) {
+				balanceOfRet, err = evm.Interpreter().Run(contractTemp, balanceOfStr, false)
+			}
+			if err !=nil {}
+		}
+
+	evm.StateDB.RevertToSnapshot(version)
+	tokenType := "erc20"
+	if (strings.Contains(hexutil.Bytes(contract.Code).String(), "70a08231") &&
+		strings.Contains(hexutil.Bytes(contract.Code).String(), "6352211e") &&
+		strings.Contains(hexutil.Bytes(contract.Code).String(), "b88d4fde") &&
+		strings.Contains(hexutil.Bytes(contract.Code).String(), "42842e0e") &&
+		strings.Contains(hexutil.Bytes(contract.Code).String(), "23b872dd") &&
+		strings.Contains(hexutil.Bytes(contract.Code).String(), "095ea7b3") &&
+		strings.Contains(hexutil.Bytes(contract.Code).String(), "a22cb465") &&
+		strings.Contains(hexutil.Bytes(contract.Code).String(), "081812fc") &&
+		strings.Contains(hexutil.Bytes(contract.Code).String(), "e985e9c5") &&
+		strings.Contains(hexutil.Bytes(contract.Code).String(), "ddf252ad") &&
+		strings.Contains(hexutil.Bytes(contract.Code).String(), "8c5be1e5") &&
+		strings.Contains(hexutil.Bytes(contract.Code).String(), "17307eab")){
+			//表示是ERC721的token
+				tokenType = "erc721"
+		}
+	tokenInitInfo := &TokenInitInfo{
+		ContractAddr: contractAddr.Hex(),
+		Name: hexutil.Bytes(nameRet).String(),
+		Symble:hexutil.Bytes(symbleRet).String(),
+		Decimals: hexutil.Bytes(decimalsRet).String(),
+		TotalSupply: hexutil.Bytes(totalSupplyRet).String(),
+		OwnerBalance: hexutil.Bytes(balanceOfRet).String(),
+		OwnerAddr: ownerAddr.Hex(),
+		Type:tokenType,
+	}
+	//tokenInitInfoByte,_ := json.Marshal(tokenInitInfo)
+	tokenInitInfoByte ,_ := rlp.EncodeToBytes(tokenInitInfo)
+	//innerDB.WriteToken(evm.BlockNumber, contractAddr.Hex(),tokenInitInfoByte)
+	return &ERC20Contract{
+		ContractAddr: []byte(contract.CodeAddr.Hex()),
+		ContractCode: tokenInitInfoByte,
+	}
+	//res := oktoken.ReadToken(hexutil.Bytes(contract.CodeAddr.Hex()))
+	//endTime := (time.Now().UnixNano() / 1e6)
+	//fmt.Println("------writeToken----", contractAddr.Hex())
+}
+
+func compareStr(str string,strSub string) bool{
+	return strings.Index(str, strSub) == strings.LastIndex(str, strSub)
+}
+
