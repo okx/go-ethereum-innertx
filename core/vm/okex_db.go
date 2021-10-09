@@ -7,15 +7,15 @@ import (
 	"path/filepath"
 )
 
-var db  *leveldb.Database
-var blockDB * leveldb.Database
+var db *leveldb.Database
+var blockDB *leveldb.Database
 var tokenDB *leveldb.Database
 
 var inited bool
 var blockInited bool
 var initedToken bool
 
-func InitDB(datadir string) error{
+func InitDB(datadir string) error {
 	if err := InitBlockDB(datadir); err != nil {
 		return err
 	}
@@ -28,7 +28,7 @@ func InitDB(datadir string) error{
 	return nil
 }
 
-func CloseDB() (errors []error){
+func CloseDB() (errors []error) {
 	if inited == true {
 		if err := db.Close(); err != nil {
 			errors = append(errors, err)
@@ -62,17 +62,17 @@ func InitTokenDB(datadir string) error {
 		return err
 	} else {
 		tokenDB = token
-		initedToken = true;
+		initedToken = true
 		log.Info("Init tokenDB")
 		return nil
 	}
 }
 
-func InitTxDB(datadir string) error{
+func InitTxDB(datadir string) error {
 	var path string
 	if datadir != "" {
 		path = filepath.Join(datadir, "okdb", "InnerTxDB")
-	}else{
+	} else {
 		path = filepath.Join("okdb", "InnerTxDB")
 	}
 	var createDB, err = leveldb.New(path, 128, 128, "contract", false)
@@ -80,19 +80,19 @@ func InitTxDB(datadir string) error{
 		inited = false
 		log.Info("Init levelDB failed", err)
 		return err
-	}else{
+	} else {
 		db = createDB
-		inited = true;
+		inited = true
 		log.Info("Init levelDB")
 		return nil
 	}
 }
 
-func InitBlockDB(datadir string) error{
+func InitBlockDB(datadir string) error {
 	var path string
 	if datadir != "" {
 		path = filepath.Join(datadir, "okdb", "InnerBlockDB")
-	}else{
+	} else {
 		path = filepath.Join("okdb", "InnerBlockDB")
 	}
 	var db, err = leveldb.New(path, 128, 128, "blockTx", false)
@@ -100,20 +100,20 @@ func InitBlockDB(datadir string) error{
 		blockInited = false
 		log.Info("Init blockDB failed", err)
 		return err
-	}else{
+	} else {
 		blockDB = db
-		blockInited = true;
+		blockInited = true
 		log.Info("Init blockDB")
 		return nil
 	}
 }
 
-func ReadToken(key []byte) []byte{
-	rtn,_ := tokenDB.Get(key)
-	return rtn;
+func ReadToken(key []byte) []byte {
+	rtn, _ := tokenDB.Get(key)
+	return rtn
 }
 
-func WriteTx(hash string, ix []*InnerTx) error{
+func WriteTx(hash string, ix []*InnerTx) error {
 	row, _ := rlp.EncodeToBytes(ix)
 	err := db.Put([]byte(hash), row)
 	if err != nil {
@@ -123,9 +123,9 @@ func WriteTx(hash string, ix []*InnerTx) error{
 	return nil
 }
 
-func WriteBlockDB(blockhash string, hash []string) error{
+func WriteBlockDB(blockhash string, hash []string) error {
 	if len(blockhash) != 0 && len(hash) != 0 {
-		row,_ := rlp.EncodeToBytes(hash)
+		row, _ := rlp.EncodeToBytes(hash)
 		err := blockDB.Put([]byte(blockhash), row)
 		if err != nil {
 			log.Info("Writeblock err:" + blockhash)
@@ -135,7 +135,7 @@ func WriteBlockDB(blockhash string, hash []string) error{
 	return nil
 }
 
-func WriteToken(key []byte, value []byte) error{
+func WriteToken(key []byte, value []byte) error {
 	err := tokenDB.Put(key, value)
 	if err != nil {
 		log.Info("Writetoken error:" + string(key))
@@ -144,24 +144,24 @@ func WriteToken(key []byte, value []byte) error{
 	return nil
 }
 
-func GetFromDB(hash string) []InnerTx{
+func GetFromDB(hash string) []InnerTx {
 	result, err := db.Get([]byte(hash))
 	if err == nil {
-		innerTxs := make([]InnerTx,0)
+		innerTxs := make([]InnerTx, 0)
 		rlp.DecodeBytes(result, &innerTxs)
 		return innerTxs
-	}else {
+	} else {
 		return nil
 	}
 }
 
-func GetBlockDB(blockhash string) []string{
+func GetBlockDB(blockhash string) []string {
 	result, err := blockDB.Get([]byte(blockhash))
 	if err == nil {
 		var innerTxies []string
 		rlp.DecodeBytes(result, &innerTxies)
 		return innerTxies
-	}else {
+	} else {
 		return nil
 	}
 }
