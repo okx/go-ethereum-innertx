@@ -1,167 +1,174 @@
 package vm
 
 import (
-	"github.com/ethereum/go-ethereum/ethdb/leveldb"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
-	"path/filepath"
 )
 
-var db  *leveldb.Database
-var blockDB * leveldb.Database
-var tokenDB *leveldb.Database
+type OKDB interface {
+	// Get fetches the value of the given key, or nil if it does not exist.
+	// CONTRACT: key, value readonly []byte
+	Get([]byte) ([]byte, error)
 
-var inited bool
-var blockInited bool
-var initedToken bool
+	// Put sets the value for the given key, replacing it if it already exists.
+	// CONTRACT: key, value readonly []byte
+	Put([]byte, []byte) error
 
-func InitDB(datadir string) error{
-	if err := InitBlockDB(datadir); err != nil {
-		return err
+	// Close closes the database connection.
+	Close() error
+}
+
+type BackendType string
+
+// These are valid backend types.
+const (
+	GoLevelDBBackend BackendType = "goleveldb"
+	RocksDBBackend   BackendType = "rocksdb"
+)
+
+type dbCreator func(name string, dir string) (OKDB, error)
+
+var backends = map[BackendType]dbCreator{}
+
+func registerDBCreator(backend BackendType, creator dbCreator, force bool) {
+	_, ok := backends[backend]
+	if !force && ok {
+		return
 	}
-	if err := InitTxDB(datadir); err != nil {
-		return err
+	backends[backend] = creator
+}
+
+var (
+	txDB    OKDB
+	blockDB OKDB
+	tokenDB OKDB
+)
+
+func InitDB(dir string, backend BackendType) error {
+	var dbDir string
+	if dir != "" {
+		dbDir = filepath.Join(dir, "okdb")
+	} else {
+		dbDir = filepath.Join("okdb")
 	}
-	if err := InitTokenDB(datadir); err != nil {
-		return err
+	if _, err := os.Stat(dbDir); os.IsNotExist(err) {
+		err := os.MkdirAll(dbDir, 0700)
+		if err != nil {
+			return fmt.Errorf("could not create directory %v: %w", dir, err)
+		}
 	}
+
+	txDB = newDB("InnerTxDB", backend, dbDir)
+	blockDB = newDB("InnerBlockDB", backend, dbDir)
+	tokenDB = newDB("TokenDB", backend, dbDir)
+
 	return nil
 }
 
-func CloseDB() (errors []error){
-	if inited == true {
-		if err := db.Close(); err != nil {
-			errors = append(errors, err)
+func newDB(name string, backend BackendType, dir string) OKDB {
+	dbCreator, ok := backends[backend]
+	if !ok {
+		keys := make([]string, len(backends))
+		i := 0
+		for k := range backends {
+			keys[i] = string(k)
+			i++
 		}
+		panic(fmt.Sprintf("Unknown db_backend %s, expected either %s", backend, strings.Join(keys, " or ")))
 	}
-	if blockInited == true {
-		if err := blockDB.Close(); err != nil {
-			errors = append(errors, err)
-		}
+
+	db, err := dbCreator(name, dir)
+	if err != nil {
+		panic(fmt.Sprintf("Error initializing DB: %v", err))
 	}
-	if initedToken == true {
-		if err := tokenDB.Close(); err != nil {
-			errors = append(errors, err)
-		}
+	return db
+}
+
+func CloseDB() (errors []error) {
+	if err := txDB.Close(); err != nil {
+		errors = append(errors, err)
 	}
+
+	if err := blockDB.Close(); err != nil {
+		errors = append(errors, err)
+	}
+
+	if err := tokenDB.Close(); err != nil {
+		errors = append(errors, err)
+	}
+
 	log.Info("Close innerTx DB")
 	return errors
 }
 
-func InitTokenDB(datadir string) error {
-	var path string
-	if datadir != "" {
-		path = filepath.Join(datadir, "okdb", "TokenDB")
-	} else {
-		path = filepath.Join("okdb", "TokenDB")
-	}
-	var token, err = leveldb.New(path, 128, 128, "tokenInfo", false)
-	if err != nil {
-		initedToken = false
-		log.Info("Init tokenlevelDB failed", err)
-		return err
-	} else {
-		tokenDB = token
-		initedToken = true;
-		log.Info("Init tokenDB")
-		return nil
-	}
+func ReadToken(key []byte) []byte {
+	rtn, _ := tokenDB.Get(key)
+	return rtn
 }
 
-func InitTxDB(datadir string) error{
-	var path string
-	if datadir != "" {
-		path = filepath.Join(datadir, "okdb", "InnerTxDB")
-	}else{
-		path = filepath.Join("okdb", "InnerTxDB")
-	}
-	var createDB, err = leveldb.New(path, 128, 128, "contract", false)
-	if err != nil {
-		inited = false
-		log.Info("Init levelDB failed", err)
-		return err
-	}else{
-		db = createDB
-		inited = true;
-		log.Info("Init levelDB")
-		return nil
-	}
-}
-
-func InitBlockDB(datadir string) error{
-	var path string
-	if datadir != "" {
-		path = filepath.Join(datadir, "okdb", "InnerBlockDB")
-	}else{
-		path = filepath.Join("okdb", "InnerBlockDB")
-	}
-	var db, err = leveldb.New(path, 128, 128, "blockTx", false)
-	if err != nil {
-		blockInited = false
-		log.Info("Init blockDB failed", err)
-		return err
-	}else{
-		blockDB = db
-		blockInited = true;
-		log.Info("Init blockDB")
-		return nil
-	}
-}
-
-func ReadToken(key []byte) []byte{
-	rtn,_ := tokenDB.Get(key)
-	return rtn;
-}
-
-func WriteTx(hash string, ix []*InnerTx) error{
+func WriteTx(hash string, ix []*InnerTx) error {
 	row, _ := rlp.EncodeToBytes(ix)
-	err := db.Put([]byte(hash), row)
+	err := txDB.Put([]byte(hash), row)
 	if err != nil {
-		log.Info("Writetx error:" + hash)
+		log.Info("WriteTx error:" + hash)
 		return err
 	}
 	return nil
 }
 
-func WriteBlockDB(blockhash string, hash []string) error{
+func WriteBlockDB(blockhash string, hash []string) error {
 	if len(blockhash) != 0 && len(hash) != 0 {
-		row,_ := rlp.EncodeToBytes(hash)
+		row, _ := rlp.EncodeToBytes(hash)
 		err := blockDB.Put([]byte(blockhash), row)
 		if err != nil {
-			log.Info("Writeblock err:" + blockhash)
+			log.Info("WriteBlock err:" + blockhash)
 			return err
 		}
 	}
 	return nil
 }
 
-func WriteToken(key []byte, value []byte) error{
+func WriteToken(key []byte, value []byte) error {
 	err := tokenDB.Put(key, value)
 	if err != nil {
-		log.Info("Writetoken error:" + string(key))
+		log.Info("WriteToken error:" + string(key))
 		return err
 	}
 	return nil
 }
 
-func GetFromDB(hash string) []InnerTx{
-	result, err := db.Get([]byte(hash))
-	if err == nil {
-		innerTxs := make([]InnerTx,0)
-		rlp.DecodeBytes(result, &innerTxs)
-		return innerTxs
-	}else {
+func GetFromDB(hash string) []InnerTx {
+	result, err := txDB.Get([]byte(hash))
+	if err != nil {
 		return nil
 	}
+
+	innerTxs := make([]InnerTx, 0)
+	rlp.DecodeBytes(result, &innerTxs)
+	return innerTxs
 }
 
-func GetBlockDB(blockhash string) []string{
-	result, err := blockDB.Get([]byte(blockhash))
-	if err == nil {
-		var innerTxies []string
-		rlp.DecodeBytes(result, &innerTxies)
-		return innerTxies
-	}else {
+func GetBlockDB(blockHash string) []string {
+	result, err := blockDB.Get([]byte(blockHash))
+	if err != nil {
 		return nil
 	}
+
+	var innerTxs []string
+	rlp.DecodeBytes(result, &innerTxs)
+	return innerTxs
+}
+
+// We defensively turn nil keys or values into []byte{} for
+// most operations.
+func nonNilBytes(bz []byte) []byte {
+	if bz == nil {
+		return []byte{}
+	}
+	return bz
 }
