@@ -6,18 +6,17 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 )
 
-func init() {
-	dbCreator := func(name string, dir string) (OKDB, error) {
-		return NewGoLevelDB(name, dir)
-	}
-	registerDBCreator(GoLevelDBBackend, dbCreator, false)
-}
-
 type GoLevelDB struct {
 	db *leveldb.Database
 }
 
 var _ OKDB = (*GoLevelDB)(nil)
+
+func DefaultCreator() DBCreator {
+	return func(name string, dir string) (OKDB, error) {
+		return NewGoLevelDB(name, dir)
+	}
+}
 
 func NewGoLevelDB(name string, dir string) (*GoLevelDB, error) {
 	dbPath := filepath.Join(dir, name)
@@ -37,8 +36,8 @@ func (db *GoLevelDB) Get(key []byte) ([]byte, error) {
 	return db.db.Get(key)
 }
 
-// Put implements OKDB.
-func (db *GoLevelDB) Put(key []byte, value []byte) error {
+// Set implements OKDB.
+func (db *GoLevelDB) Set(key []byte, value []byte) error {
 	key = nonNilBytes(key)
 	value = nonNilBytes(value)
 	return db.db.Put(key, value)

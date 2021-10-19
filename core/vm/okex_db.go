@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -15,33 +14,15 @@ type OKDB interface {
 	// CONTRACT: key, value readonly []byte
 	Get([]byte) ([]byte, error)
 
-	// Put sets the value for the given key, replacing it if it already exists.
+	// Set sets the value for the given key, replacing it if it already exists.
 	// CONTRACT: key, value readonly []byte
-	Put([]byte, []byte) error
+	Set([]byte, []byte) error
 
 	// Close closes the database connection.
 	Close() error
 }
 
-type BackendType string
-
-// These are valid backend types.
-const (
-	GoLevelDBBackend BackendType = "goleveldb"
-	RocksDBBackend   BackendType = "rocksdb"
-)
-
-type dbCreator func(name string, dir string) (OKDB, error)
-
-var backends = map[BackendType]dbCreator{}
-
-func registerDBCreator(backend BackendType, creator dbCreator, force bool) {
-	_, ok := backends[backend]
-	if !force && ok {
-		return
-	}
-	backends[backend] = creator
-}
+type DBCreator func(name string, dir string) (OKDB, error)
 
 var (
 	txDB    OKDB
@@ -49,7 +30,11 @@ var (
 	tokenDB OKDB
 )
 
-func InitDB(dir string, backend BackendType) error {
+func InitDB(dir string, creator DBCreator) error {
+	if creator == nil {
+		return fmt.Errorf("createor is nil %v", dir)
+	}
+
 	var dbDir string
 	if dir != "" {
 		dbDir = filepath.Join(dir, "okdb")
@@ -63,26 +48,15 @@ func InitDB(dir string, backend BackendType) error {
 		}
 	}
 
-	txDB = newDB("InnerTxDB", backend, dbDir)
-	blockDB = newDB("InnerBlockDB", backend, dbDir)
-	tokenDB = newDB("TokenDB", backend, dbDir)
+	txDB = newDB("InnerTxDB", creator, dbDir)
+	blockDB = newDB("InnerBlockDB", creator, dbDir)
+	tokenDB = newDB("TokenDB", creator, dbDir)
 
 	return nil
 }
 
-func newDB(name string, backend BackendType, dir string) OKDB {
-	dbCreator, ok := backends[backend]
-	if !ok {
-		keys := make([]string, len(backends))
-		i := 0
-		for k := range backends {
-			keys[i] = string(k)
-			i++
-		}
-		panic(fmt.Sprintf("Unknown db_backend %s, expected either %s", backend, strings.Join(keys, " or ")))
-	}
-
-	db, err := dbCreator(name, dir)
+func newDB(name string, creator DBCreator, dir string) OKDB {
+	db, err := creator(name, dir)
 	if err != nil {
 		panic(fmt.Sprintf("Error initializing DB: %v", err))
 	}
@@ -113,7 +87,7 @@ func ReadToken(key []byte) []byte {
 
 func WriteTx(hash string, ix []*InnerTx) error {
 	row, _ := rlp.EncodeToBytes(ix)
-	err := txDB.Put([]byte(hash), row)
+	err := txDB.Set([]byte(hash), row)
 	if err != nil {
 		log.Info("WriteTx error:" + hash)
 		return err
@@ -124,7 +98,7 @@ func WriteTx(hash string, ix []*InnerTx) error {
 func WriteBlockDB(blockhash string, hash []string) error {
 	if len(blockhash) != 0 && len(hash) != 0 {
 		row, _ := rlp.EncodeToBytes(hash)
-		err := blockDB.Put([]byte(blockhash), row)
+		err := blockDB.Set([]byte(blockhash), row)
 		if err != nil {
 			log.Info("WriteBlock err:" + blockhash)
 			return err
@@ -134,7 +108,7 @@ func WriteBlockDB(blockhash string, hash []string) error {
 }
 
 func WriteToken(key []byte, value []byte) error {
-	err := tokenDB.Put(key, value)
+	err := tokenDB.Set(key, value)
 	if err != nil {
 		log.Info("WriteToken error:" + string(key))
 		return err
