@@ -19,7 +19,6 @@ package node
 import (
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -29,6 +28,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -180,7 +180,7 @@ func (n *Node) Start() error {
 		return err
 	}
 	//初始化内部交易数据库
-	err = vm.InitDB(n.config.DataDir)
+	err = vm.InitDB(n.config.DataDir, vm.DefaultCreator())
 	if err != nil {
 		n.doClose(nil)
 		return err
