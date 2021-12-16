@@ -818,7 +818,13 @@ func opSuicide(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]
 	beneficiary := scope.Stack.pop()
 	toAddr := common.Address(beneficiary.Bytes20())
 	balance := interpreter.evm.StateDB.GetBalance(scope.Contract.Address())
-
+	// Verify SELFDESTRUCT opCode.
+	// It doesn't consume gas.
+	if interpreter.evm.Config.ContractVerifier != nil {
+		if err := interpreter.evm.Config.ContractVerifier.Verify(interpreter.evm.StateDB, SELFDESTRUCT, scope.Contract.Address(), beneficiary.Bytes20(), nil, balance); err != nil {
+			return nil, err
+		}
+	}
 	callTx := initOp("suicide", scope.Contract.Address(), toAddr, common.Address{}, 0, *balance)
 	newIndex := beforeOp(interpreter, callTx)
 	interpreter.evm.StateDB.AddBalance(beneficiary.Bytes20(), balance)

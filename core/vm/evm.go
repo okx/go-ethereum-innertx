@@ -17,7 +17,6 @@
 package vm
 
 import (
-
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -205,6 +204,15 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 	if value.Sign() != 0 && !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
 		return nil, gas, ErrInsufficientBalance
 	}
+	// Verify call function.
+	// It must be verified before evm.stateDB snapshot for avoiding reverting to snapshot.
+	// It doesn't consume gas.
+	if evm.Config.ContractVerifier != nil {
+		if err := evm.Config.ContractVerifier.Verify(evm.StateDB, CALL, caller.Address(), addr, input, value); err != nil {
+			return nil, gas, err
+		}
+	}
+
 	snapshot := evm.StateDB.Snapshot()
 	p, isPrecompile := evm.precompile(addr)
 
@@ -284,6 +292,14 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 	if !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
 		return nil, gas, ErrInsufficientBalance
 	}
+	// Verify call function.
+	// It must be verified before evm.stateDB snapshot for avoiding reverting to snapshot.
+	// It doesn't consume gas.
+	if evm.Config.ContractVerifier != nil {
+		if err := evm.Config.ContractVerifier.Verify(evm.StateDB, CALLCODE, caller.Address(), addr, input, value); err != nil {
+			return nil, gas, err
+		}
+	}
 	var snapshot = evm.StateDB.Snapshot()
 
 	// It is allowed to call precompiles, even via delegatecall
@@ -320,6 +336,14 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 	if evm.depth > int(params.CallCreateDepth) {
 		return nil, gas, ErrDepth
 	}
+	// Verify call function.
+	// It must be verified before evm.stateDB snapshot for avoiding reverting to snapshot.
+	// It doesn't consume gas.
+	if evm.Config.ContractVerifier != nil {
+		if err := evm.Config.ContractVerifier.Verify(evm.StateDB, DELEGATECALL, caller.Address(), addr, input, big0); err != nil {
+			return nil, gas, err
+		}
+	}
 	var snapshot = evm.StateDB.Snapshot()
 
 	// It is allowed to call precompiles, even via delegatecall
@@ -353,6 +377,14 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 	// Fail if we're trying to execute above the call depth limit
 	if evm.depth > int(params.CallCreateDepth) {
 		return nil, gas, ErrDepth
+	}
+	// Verify call function.
+	// It must be verified before evm.stateDB snapshot for avoiding reverting to snapshot.
+	// It doesn't consume gas.
+	if evm.Config.ContractVerifier != nil {
+		if err := evm.Config.ContractVerifier.Verify(evm.StateDB, STATICCALL, caller.Address(), addr, input, big0); err != nil {
+			return nil, gas, err
+		}
 	}
 	// We take a snapshot here. This is a bit counter-intuitive, and could probably be skipped.
 	// However, even a staticcall is considered a 'touch'. On mainnet, static calls were introduced
@@ -517,4 +549,3 @@ func (evm *EVM) GetDepth() int {
 func (evm *EVM) GetIndex() int {
 	return evm.index
 }
-
