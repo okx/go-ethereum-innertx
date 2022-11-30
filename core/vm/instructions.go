@@ -946,18 +946,10 @@ func beforeOp(interpreter *EVMInterpreter, callTx *InnerTx) int {
 }
 
 func afterSuicide(interpreter *EVMInterpreter, newIndex int, callTx *InnerTx) {
-	interpreter.evm.useMap[newIndex] = true
 	callTx.IsError = false
 }
 
 func afterCall(interpreter *EVMInterpreter, newIndex int, value big.Int, err error, callTx *InnerTx) {
-	nextUseful, _ := interpreter.evm.useMap[newIndex+1]
-	if nextUseful == false && value.Cmp(big.NewInt(0)) == 0 {
-		interpreter.evm.InnerTxies = interpreter.evm.InnerTxies[:newIndex]
-		interpreter.evm.useMap[newIndex] = false
-	} else {
-		interpreter.evm.useMap[newIndex] = true
-	}
 	if err == nil {
 		callTx.IsError = false
 	} else {
@@ -971,7 +963,6 @@ func afterCall(interpreter *EVMInterpreter, newIndex int, value big.Int, err err
 func afterCreate(interpreter *EVMInterpreter, newIndex int, callTx *InnerTx, addr common.Address, suberr error) {
 	//添加to地址
 	callTx.To = addr.Hash().String()
-	interpreter.evm.useMap[newIndex] = true
 	if suberr == nil {
 		callTx.IsError = false
 	} else {
