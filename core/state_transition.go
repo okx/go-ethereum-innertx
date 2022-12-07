@@ -23,6 +23,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	cmath "github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/core/okex"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -316,10 +317,12 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	)
 
 	//add InnerTx
-	callTx := &vm.InnerTx{
-		Dept:    *big.NewInt(0),
-		From:    sender.Address().String(),
-		IsError: false,
+	callTx := &okex.InnerTxInternal{
+		InnerTxExport: okex.InnerTxExport{
+			Dept:    *big.NewInt(0),
+			From:    sender.Address().String(),
+			IsError: false,
+		},
 	}
 	st.evm.InnerTxies = append(st.evm.InnerTxies, callTx)
 	//add InnerTx end

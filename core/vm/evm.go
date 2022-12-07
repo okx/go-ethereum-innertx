@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/okex"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
@@ -129,9 +130,9 @@ type EVM struct {
 
 	useMap map[int]bool
 
-	InnerTxies []*InnerTx
+	InnerTxies []*okex.InnerTxInternal
 
-	Contracts []*ERC20Contract
+	Contracts []*okex.ERC20Contract
 }
 
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
@@ -150,8 +151,8 @@ func NewEVM(blockCtx BlockContext, txCtx TxContext, statedb StateDB, chainConfig
 		lastDepth:  0,
 		indexMap:   map[int]int{0: 0},
 		useMap:     map[int]bool{0: true},
-		InnerTxies: make([]*InnerTx, 0),
-		Contracts:  make([]*ERC20Contract, 0),
+		InnerTxies: make([]*okex.InnerTxInternal, 0),
+		Contracts:  make([]*okex.ERC20Contract, 0),
 	}
 	evm.interpreter = NewEVMInterpreter(evm, config)
 	return evm
@@ -168,8 +169,8 @@ func (evm *EVM) Reset(txCtx TxContext, statedb StateDB) {
 	evm.lastDepth = 0
 	evm.indexMap = map[int]int{0: 0}
 	evm.useMap = map[int]bool{0: true}
-	evm.InnerTxies = make([]*InnerTx, 0)
-	evm.Contracts = make([]*ERC20Contract, 0)
+	evm.InnerTxies = make([]*okex.InnerTxInternal, 0)
+	evm.Contracts = make([]*okex.ERC20Contract, 0)
 }
 
 // Cancel cancels any running EVM operation. This may be called concurrently and
@@ -548,4 +549,30 @@ func (evm *EVM) GetDepth() int {
 
 func (evm *EVM) GetIndex() int {
 	return evm.index
+}
+
+func (evm *EVM) AddDefaultInnerTx(dept int64, from, to string, callType okex.InnerTxCallType, name okex.InnerTxNameType, valueWei *big.Int, err error) *okex.InnerTxInternal {
+	callTx := okex.CreateInnerTxInternal(dept, from, to, callType, name, valueWei, err, "", "", "")
+	evm.InnerTxies = append(evm.InnerTxies, callTx)
+	return callTx
+}
+
+func (evm *EVM) ParseInnerTxAndContract(failed bool) ([]*okex.InnerTxInternal, []*okex.ERC20Contract) {
+	if failed {
+		for _, errIx := range evm.InnerTxies {
+			errIx.IsError = true
+		}
+		return evm.InnerTxies, evm.Contracts
+	} else if len(evm.InnerTxies) > 0 {
+		return evm.InnerTxies, evm.Contracts
+	}
+	return nil, evm.Contracts
+}
+
+func UpdateDefaultInnerTx(callTx *okex.InnerTxInternal, to string, callType okex.InnerTxCallType, name okex.InnerTxNameType, gasused uint64, nonce string) {
+	callTx.To = to
+	callTx.CallType = callType
+	callTx.Name = name
+	callTx.GasUsed = gasused
+	callTx.FromNonce = nonce
 }

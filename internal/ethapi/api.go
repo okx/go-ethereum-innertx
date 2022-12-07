@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/okex"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -2077,26 +2078,26 @@ func toHexSlice(b [][]byte) []string {
 	return r
 }
 
-//合约信息
-func (s *PublicBlockChainAPI) TokenInitInfo(ctx context.Context, contractAddr common.Address) vm.TokenInitInfo {
-	tokenInfoByte := vm.ReadToken([]byte(contractAddr.Hex()))
-	var tokenInfo vm.TokenInitInfo
+// 合约信息
+func (s *PublicBlockChainAPI) TokenInitInfo(ctx context.Context, contractAddr common.Address) okex.TokenInitInfo {
+	tokenInfoByte := okex.ReadToken([]byte(contractAddr.Hex()))
+	var tokenInfo okex.TokenInitInfo
 	rlp.DecodeBytes(tokenInfoByte, &tokenInfo)
 	return tokenInfo
 }
 
-//内部交易
-func (s *PublicBlockChainAPI) GetInternalTransactions(ctx context.Context, txHash string) []vm.InnerTx {
-	return vm.GetFromDB(txHash)
+// 内部交易
+func (s *PublicBlockChainAPI) GetInternalTransactions(ctx context.Context, txHash string) []okex.InnerTxExport {
+	return okex.GetFromDB(txHash)
 }
 
-//按块查询
-func (s *PublicBlockChainAPI) GetBlockInternalTransactions(ctx context.Context, txHash string) map[string][]vm.InnerTx {
-	var rtn = make(map[string][]vm.InnerTx)
-	blockHashes := vm.GetBlockDB(txHash)
+// 按块查询
+func (s *PublicBlockChainAPI) GetBlockInternalTransactions(ctx context.Context, txHash string) map[string][]okex.InnerTxExport {
+	var rtn = make(map[string][]okex.InnerTxExport)
+	blockHashes := okex.GetBlockDB(txHash)
 	if blockHashes != nil {
 		for _, txHash := range blockHashes {
-			inners := vm.GetFromDB(txHash)
+			inners := okex.GetFromDB(txHash)
 			rtn[txHash] = inners
 		}
 	} else {

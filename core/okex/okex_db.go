@@ -1,9 +1,10 @@
-package vm
+package okex
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -25,9 +26,10 @@ type OKDB interface {
 type DBCreator func(name string, dir string) (OKDB, error)
 
 var (
-	txDB    OKDB
-	blockDB OKDB
-	tokenDB OKDB
+	txDB               OKDB
+	blockDB            OKDB
+	tokenDB            OKDB
+	contractCreationDB OKDB
 )
 
 func InitDB(dir string, creator DBCreator) error {
@@ -51,6 +53,7 @@ func InitDB(dir string, creator DBCreator) error {
 	txDB = newDB("InnerTxDB", creator, dbDir)
 	blockDB = newDB("InnerBlockDB", creator, dbDir)
 	tokenDB = newDB("TokenDB", creator, dbDir)
+	contractCreationDB = newDB("ContractCreationDB", creator, dbDir)
 
 	return nil
 }
@@ -76,6 +79,10 @@ func CloseDB() (errors []error) {
 		errors = append(errors, err)
 	}
 
+	if err := contractCreationDB.Close(); err != nil {
+		errors = append(errors, err)
+	}
+
 	log.Info("Close innerTx DB")
 	return errors
 }
@@ -85,11 +92,21 @@ func ReadToken(key []byte) []byte {
 	return rtn
 }
 
-func WriteTx(hash string, ix []*InnerTx) error {
+func WriteTx(hash string, ix []*InnerTxExport) error {
 	row, _ := rlp.EncodeToBytes(ix)
 	err := txDB.Set([]byte(hash), row)
 	if err != nil {
 		log.Info("WriteTx error:" + hash)
+		return err
+	}
+	return nil
+}
+
+func WriteContractCreationInfo(contractAddr string, info *ContractCreationInfoExport) error {
+	row, _ := rlp.EncodeToBytes(info)
+	err := contractCreationDB.Set([]byte(strings.ToLower(contractAddr)), row)
+	if err != nil {
+		log.Info("WriteContractCreationInfo error:" + contractAddr)
 		return err
 	}
 	return nil
@@ -116,15 +133,26 @@ func WriteToken(key []byte, value []byte) error {
 	return nil
 }
 
-func GetFromDB(hash string) []InnerTx {
+func GetFromDB(hash string) []InnerTxExport {
 	result, err := txDB.Get([]byte(hash))
 	if err != nil {
 		return nil
 	}
 
-	innerTxs := make([]InnerTx, 0)
+	innerTxs := make([]InnerTxExport, 0)
 	rlp.DecodeBytes(result, &innerTxs)
 	return innerTxs
+}
+
+func GetContractCreationDB(contractAddr string) (ContractCreationInfoExport, error) {
+	result, err := contractCreationDB.Get([]byte(strings.ToLower(contractAddr)))
+	if err != nil {
+		return ContractCreationInfoExport{}, nil
+	}
+
+	var info ContractCreationInfoExport
+	err = rlp.DecodeBytes(result, &info)
+	return info, err
 }
 
 func GetBlockDB(blockHash string) []string {

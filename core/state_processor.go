@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
+	"github.com/ethereum/go-ethereum/core/okex"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -71,11 +72,12 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		misc.ApplyDAOHardFork(statedb)
 	}
 	//init internalTx
-	var innerBlockData = &vm.BlockInnerData{
-		BlockHash:    block.Hash().Hex(),
-		TxHashes:     make([]string, 0),
-		TxMap:        make(map[string][]*vm.InnerTx),
-		ContractList: make([]*vm.ERC20Contract, 0),
+	var innerBlockData = &okex.BlockInnerData{
+		BlockHash:           block.Hash().Hex(),
+		TxHashes:            make([]string, 0),
+		TxMap:               make(map[string][]*okex.InnerTxExport),
+		ContractCreationMap: make(map[string]*okex.ContractCreationInfoExport),
+		ContractList:        make([]*okex.ERC20Contract, 0),
 	}
 	//init end
 	blockContext := NewEVMBlockContext(header, p.bc, nil)
@@ -91,9 +93,14 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		//add InnerTx
 		if innerTxs != nil {
 			innerBlockData.TxHashes = append(innerBlockData.TxHashes, tx.Hash().Hex())
-			innerBlockData.TxMap[tx.Hash().Hex()] = innerTxs
+			innerBlockData.TxMap[tx.Hash().Hex()] = okex.BuildInnerTxExports(innerTxs)
 		}
 		//add InnerTx end
+
+		// add contract create info
+		innerBlockData.ContractCreationMap = okex.BuildContractCreationInfos(innerTxs)
+		// add contract create info end
+
 		//add Contract
 		if erc20s != nil && len(erc20s) > 0 {
 			innerBlockData.ContractList = append(innerBlockData.ContractList, erc20s...)
@@ -108,7 +115,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 	//Block write db
 	if len(innerBlockData.TxHashes) > 0 {
-		if err := vm.WriteBlockDB(innerBlockData.BlockHash, innerBlockData.TxHashes); err != nil {
+		if err := okex.WriteBlockDB(innerBlockData.BlockHash, innerBlockData.TxHashes); err != nil {
 			return nil, nil, 0, err
 		}
 	}
@@ -117,16 +124,23 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	if len(innerBlockData.TxMap) > 0 {
 		for txHash, inTx := range innerBlockData.TxMap {
 			//fmt.Println(txHash)
-			if err := vm.WriteTx(txHash, inTx); err != nil {
+			if err := okex.WriteTx(txHash, inTx); err != nil {
 				return nil, nil, 0, err
 			}
 		}
 	}
 	//InnerTx write db end
+	//ContractCreationInfo write db
+	for contractAddr, info := range innerBlockData.ContractCreationMap {
+		if err := okex.WriteContractCreationInfo(contractAddr, info); err != nil {
+			return nil, nil, 0, err
+		}
+	}
+	//ContractCreationInfo write db end
 	//Contract write db
 	if len(innerBlockData.ContractList) > 0 {
 		for _, contract := range innerBlockData.ContractList {
-			if err := vm.WriteToken(contract.ContractAddr, contract.ContractCode); err != nil {
+			if err := okex.WriteToken(contract.ContractAddr, contract.ContractCode); err != nil {
 				return nil, nil, 0, err
 			}
 		}
@@ -139,7 +153,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	return receipts, allLogs, *usedGas, nil
 }
 
-func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (*types.Receipt, error, []*vm.InnerTx, []*vm.ERC20Contract) {
+func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (*types.Receipt, error, []*okex.InnerTxInternal, []*okex.ERC20Contract) {
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
 	evm.Reset(txContext, statedb)
@@ -191,7 +205,7 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 // and uses the input parameters for its environment. It returns the receipt
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
-func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, error, []*vm.InnerTx, []*vm.ERC20Contract) {
+func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, error, []*okex.InnerTxInternal, []*okex.ERC20Contract) {
 	msg, err := tx.AsMessage(types.MakeSigner(config, header.Number), header.BaseFee)
 	if err != nil {
 		return nil, err, nil, nil
@@ -202,13 +216,13 @@ func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *commo
 	return applyTransaction(msg, config, bc, author, gp, statedb, header.Number, header.Hash(), tx, usedGas, vmenv)
 }
 
-func afterApplyTransaction(vmenv *vm.EVM, failed bool) ([]*vm.InnerTx, []*vm.ERC20Contract) {
+func afterApplyTransaction(vmenv *vm.EVM, failed bool) ([]*okex.InnerTxInternal, []*okex.ERC20Contract) {
 	innerTxs := checkTransaction(vmenv, failed)
 	erc20s := vmenv.Contracts
 	return innerTxs, erc20s
 }
 
-func checkTransaction(vmenv *vm.EVM, failed bool) []*vm.InnerTx {
+func checkTransaction(vmenv *vm.EVM, failed bool) []*okex.InnerTxInternal {
 	if failed == true {
 		for _, errIx := range vmenv.InnerTxies {
 			errIx.IsError = true
