@@ -127,8 +127,6 @@ type EVM struct {
 
 	indexMap map[int]int
 
-	useMap map[int]bool
-
 	InnerTxies []*InnerTx
 
 	Contracts []*ERC20Contract
@@ -149,7 +147,6 @@ func NewEVM(blockCtx BlockContext, txCtx TxContext, statedb StateDB, chainConfig
 		index:      0,
 		lastDepth:  0,
 		indexMap:   map[int]int{0: 0},
-		useMap:     map[int]bool{0: true},
 		InnerTxies: make([]*InnerTx, 0),
 		Contracts:  make([]*ERC20Contract, 0),
 	}
@@ -167,7 +164,6 @@ func (evm *EVM) Reset(txCtx TxContext, statedb StateDB) {
 	evm.index = 0
 	evm.lastDepth = 0
 	evm.indexMap = map[int]int{0: 0}
-	evm.useMap = map[int]bool{0: true}
 	evm.InnerTxies = make([]*InnerTx, 0)
 	evm.Contracts = make([]*ERC20Contract, 0)
 }
