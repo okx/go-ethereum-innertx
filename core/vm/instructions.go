@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -584,7 +585,7 @@ func opCreate(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]b
 		bigVal = value.ToBig()
 	}
 
-	callTx := initOp("create", scope.Contract.Address(), common.Address{}, common.Address{}, gas, *value.ToBig())
+	callTx := initOp("create", interpreter.evm, input, scope.Contract.Address(), common.Address{}, common.Address{}, gas, *value.ToBig(), nil)
 	newIndex := beforeOp(interpreter, callTx)
 	res, addr, returnGas, suberr := interpreter.evm.Create(scope.Contract, input, gas, bigVal)
 	afterCreate(interpreter, newIndex, callTx, addr, suberr)
@@ -629,7 +630,7 @@ func opCreate2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]
 		bigEndowment = endowment.ToBig()
 	}
 
-	callTx := initOp("create2", scope.Contract.Address(), common.Address{}, common.Address{}, gas, *endowment.ToBig())
+	callTx := initOp("create2", interpreter.evm, input, scope.Contract.Address(), common.Address{}, common.Address{}, gas, *endowment.ToBig(), &salt)
 	newIndex := beforeOp(interpreter, callTx)
 	res, addr, returnGas, suberr := interpreter.evm.Create2(scope.Contract, input, gas,
 		bigEndowment, &salt)
@@ -671,7 +672,7 @@ func opCall(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byt
 		bigVal = value.ToBig()
 	}
 
-	callTx := initOp("call", scope.Contract.Address(), toAddr, common.Address{}, gas, *value.ToBig())
+	callTx := initOp("call", interpreter.evm, nil, scope.Contract.Address(), toAddr, common.Address{}, gas, *value.ToBig(), nil)
 	newIndex := beforeOp(interpreter, callTx)
 	ret, returnGas, err := interpreter.evm.Call(scope.Contract, toAddr, args, gas, bigVal)
 	afterCall(interpreter, newIndex, *value.ToBig(), err, callTx)
@@ -710,7 +711,7 @@ func opCallCode(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 		bigVal = value.ToBig()
 	}
 
-	callTx := initOp("callcode", scope.Contract.Address(), toAddr, toAddr, gas, *value.ToBig())
+	callTx := initOp("callcode", interpreter.evm, nil, scope.Contract.Address(), toAddr, toAddr, gas, *value.ToBig(), nil)
 	newIndex := beforeOp(interpreter, callTx)
 	ret, returnGas, err := interpreter.evm.CallCode(scope.Contract, toAddr, args, gas, bigVal)
 	afterCall(interpreter, newIndex, *value.ToBig(), err, callTx)
@@ -742,7 +743,7 @@ func opDelegateCall(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext
 	// Get arguments from the memory.
 	args := scope.Memory.GetPtr(int64(inOffset.Uint64()), int64(inSize.Uint64()))
 
-	callTx := initOp("delegatecall", scope.Contract.Address(), toAddr, toAddr, gas, *big.NewInt(0))
+	callTx := initOp("delegatecall", interpreter.evm, nil, scope.Contract.Address(), toAddr, toAddr, gas, *big.NewInt(0), nil)
 	newIndex := beforeOp(interpreter, callTx)
 	ret, returnGas, err := interpreter.evm.DelegateCall(scope.Contract, toAddr, args, gas)
 	callTx.TraceAddress = scope.Contract.CallerAddress.Hash().String()
@@ -776,7 +777,7 @@ func opStaticCall(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 	// Get arguments from the memory.
 	args := scope.Memory.GetPtr(int64(inOffset.Uint64()), int64(inSize.Uint64()))
 
-	callTx := initOp("staticcall", scope.Contract.Address(), toAddr, common.Address{}, gas, *big.NewInt(0))
+	callTx := initOp("staticcall", interpreter.evm, nil, scope.Contract.Address(), toAddr, common.Address{}, gas, *big.NewInt(0), nil)
 	newIndex := beforeOp(interpreter, callTx)
 	ret, returnGas, err := interpreter.evm.StaticCall(scope.Contract, toAddr, args, gas)
 	afterCall(interpreter, newIndex, *big.NewInt(0), err, callTx)
@@ -825,7 +826,7 @@ func opSuicide(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]
 			return nil, err
 		}
 	}
-	callTx := initOp("suicide", scope.Contract.Address(), toAddr, common.Address{}, 0, *balance)
+	callTx := initOp("suicide", interpreter.evm, nil, scope.Contract.Address(), toAddr, common.Address{}, 0, *balance, nil)
 	newIndex := beforeOp(interpreter, callTx)
 	interpreter.evm.StateDB.AddBalance(beneficiary.Bytes20(), balance)
 	interpreter.evm.StateDB.Suicide(scope.Contract.Address())
@@ -918,7 +919,7 @@ func makeSwap(size int64) executionFunc {
 	}
 }
 
-func beforeOp(interpreter *EVMInterpreter, callTx *InnerTx) int {
+func beforeOp(interpreter *EVMInterpreter, callTx *InnerTxInternal) int {
 	if interpreter.evm.lastDepth == interpreter.evm.depth {
 		interpreter.evm.index++
 		interpreter.evm.indexMap[interpreter.evm.depth] = interpreter.evm.index
@@ -945,11 +946,11 @@ func beforeOp(interpreter *EVMInterpreter, callTx *InnerTx) int {
 	return newIndex
 }
 
-func afterSuicide(interpreter *EVMInterpreter, newIndex int, callTx *InnerTx) {
+func afterSuicide(interpreter *EVMInterpreter, newIndex int, callTx *InnerTxInternal) {
 	callTx.IsError = false
 }
 
-func afterCall(interpreter *EVMInterpreter, newIndex int, value big.Int, err error, callTx *InnerTx) {
+func afterCall(interpreter *EVMInterpreter, newIndex int, value big.Int, err error, callTx *InnerTxInternal) {
 	if err == nil {
 		callTx.IsError = false
 	} else {
@@ -960,7 +961,7 @@ func afterCall(interpreter *EVMInterpreter, newIndex int, value big.Int, err err
 	}
 }
 
-func afterCreate(interpreter *EVMInterpreter, newIndex int, callTx *InnerTx, addr common.Address, suberr error) {
+func afterCreate(interpreter *EVMInterpreter, newIndex int, callTx *InnerTxInternal, addr common.Address, suberr error) {
 	//添加to地址
 	callTx.To = addr.Hash().String()
 	if suberr == nil {
@@ -973,18 +974,23 @@ func afterCreate(interpreter *EVMInterpreter, newIndex int, callTx *InnerTx, add
 	}
 }
 
-func initOp(name string, fromAddr common.Address, toAddr common.Address, codeAddr common.Address, gas uint64, value big.Int) *InnerTx {
-	callTx := &InnerTx{
-		CallType: name,
-		From:     fromAddr.Hash().String(),
+func initOp(name string, evm *EVM, input []byte, fromAddr common.Address, toAddr common.Address, codeAddr common.Address, gas uint64, value big.Int, salt *uint256.Int) *InnerTxInternal {
+	callTx := &InnerTxInternal{
+		InnerTxExport: InnerTxExport{
+			CallType: name,
+			From:     fromAddr.Hash().String(),
+		},
 	}
 	switch name {
 	case "create":
 		callTx.ValueWei = value.String()
 		callTx.GasUsed = gas
+		callTx.FromNonce = fmt.Sprintf("%d", evm.StateDB.GetNonce(fromAddr))
 	case "create2":
 		callTx.ValueWei = value.String()
 		callTx.GasUsed = gas
+		callTx.Create2Salt = fmt.Sprintf("%x", salt.Bytes())
+		callTx.Create2CodeHash = fmt.Sprintf("%x", (&codeAndHash{code: input}).Hash().Bytes())
 	case "call":
 		callTx.ValueWei = value.String()
 		callTx.GasUsed = gas

@@ -316,10 +316,12 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	)
 
 	//add InnerTx
-	callTx := &vm.InnerTx{
-		Dept:    *big.NewInt(0),
-		From:    sender.Address().String(),
-		IsError: false,
+	callTx := &vm.InnerTxInternal{
+		InnerTxExport: vm.InnerTxExport{
+			Dept:    *big.NewInt(0),
+			From:    sender.Address().String(),
+			IsError: false,
+		},
 	}
 	st.evm.InnerTxies = append(st.evm.InnerTxies, callTx)
 	//add InnerTx end
