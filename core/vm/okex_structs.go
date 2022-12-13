@@ -8,7 +8,11 @@ const (
 	EvmCreateName  = "cosmos-create"
 )
 
-type InnerTxExport struct {
+// InnerTxBasic stores the basic field of a innertx.
+// NOTE: DON'T change this struct for:
+// 1. It will be written to database, and must be keep the same type When reading history data from db
+// 2. It will be returned by rpc method
+type InnerTxBasic struct {
 	Dept          big.Int `json:"dept"`
 	InternalIndex big.Int `json:"internal_index"`
 	CallType      string  `json:"call_type"`
@@ -26,7 +30,7 @@ type InnerTxExport struct {
 	Error         string  `json:"error"`
 }
 
-type ContractCreationInfoExport struct {
+type ContractCreationInfo struct {
 	Creator         string `json:"creator"`
 	CreateType      string `json:"create_type"`
 	NonceOnCreation string `json:"nonce_on_creation"`
@@ -53,31 +57,32 @@ type ERC20Contract struct {
 type BlockInnerData struct {
 	BlockHash           string
 	TxHashes            []string
-	TxMap               map[string][]*InnerTxExport
-	ContractCreationMap map[string]*ContractCreationInfoExport
+	TxMap               map[string][]*InnerTxBasic
+	ContractCreationMap map[string]*ContractCreationInfo
 	ContractList        []*ERC20Contract
 }
 
-type InnerTxInternal struct {
-	InnerTxExport
+// InnerTx store all field of a innertx, you can change/add those field as you will.
+type InnerTx struct {
+	InnerTxBasic
 
 	FromNonce       string
 	Create2Salt     string
 	Create2CodeHash string
 }
 
-func BuildInnerTxExports(innerTxs []*InnerTxInternal) []*InnerTxExport {
-	results := make([]*InnerTxExport, 0, len(innerTxs))
+func BuildInnerTxBasic(innerTxs []*InnerTx) []*InnerTxBasic {
+	results := make([]*InnerTxBasic, 0, len(innerTxs))
 
 	for _, innertx := range innerTxs {
-		results = append(results, &innertx.InnerTxExport)
+		results = append(results, &innertx.InnerTxBasic)
 	}
 
 	return results
 }
 
-func BuildContractCreationInfos(innerTxs []*InnerTxInternal) map[string]*ContractCreationInfoExport {
-	results := make(map[string]*ContractCreationInfoExport)
+func BuildContractCreationInfos(innerTxs []*InnerTx) map[string]*ContractCreationInfo {
+	results := make(map[string]*ContractCreationInfo)
 
 	for _, tx := range innerTxs {
 		if !tx.isCreateContract() {
@@ -89,7 +94,7 @@ func BuildContractCreationInfos(innerTxs []*InnerTxInternal) map[string]*Contrac
 			// TODO: define calltype constant
 			createType = "create"
 		}
-		cci := &ContractCreationInfoExport{
+		cci := &ContractCreationInfo{
 			Creator:         tx.From,
 			CreateType:      createType,
 			NonceOnCreation: tx.FromNonce,
@@ -102,7 +107,7 @@ func BuildContractCreationInfos(innerTxs []*InnerTxInternal) map[string]*Contrac
 	return results
 }
 
-func (intx *InnerTxInternal) isCreateContract() bool {
+func (intx *InnerTx) isCreateContract() bool {
 	// TODO: define calltype constant
 	return intx.CallType == "create" ||
 		intx.CallType == "create2" ||

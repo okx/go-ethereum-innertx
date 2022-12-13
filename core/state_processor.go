@@ -74,8 +74,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	var innerBlockData = &vm.BlockInnerData{
 		BlockHash:           block.Hash().Hex(),
 		TxHashes:            make([]string, 0),
-		TxMap:               make(map[string][]*vm.InnerTxExport),
-		ContractCreationMap: make(map[string]*vm.ContractCreationInfoExport),
+		TxMap:               make(map[string][]*vm.InnerTxBasic),
+		ContractCreationMap: make(map[string]*vm.ContractCreationInfo),
 		ContractList:        make([]*vm.ERC20Contract, 0),
 	}
 	//init end
@@ -92,7 +92,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		//add InnerTx
 		if innerTxs != nil {
 			innerBlockData.TxHashes = append(innerBlockData.TxHashes, tx.Hash().Hex())
-			innerBlockData.TxMap[tx.Hash().Hex()] = vm.BuildInnerTxExports(innerTxs)
+			innerBlockData.TxMap[tx.Hash().Hex()] = vm.BuildInnerTxBasic(innerTxs)
 		}
 		//add InnerTx end
 		// add contract create info
@@ -150,7 +150,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	return receipts, allLogs, *usedGas, nil
 }
 
-func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (*types.Receipt, error, []*vm.InnerTxInternal, []*vm.ERC20Contract) {
+func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (*types.Receipt, error, []*vm.InnerTx, []*vm.ERC20Contract) {
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
 	evm.Reset(txContext, statedb)
@@ -202,7 +202,7 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 // and uses the input parameters for its environment. It returns the receipt
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
-func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, error, []*vm.InnerTxInternal, []*vm.ERC20Contract) {
+func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, error, []*vm.InnerTx, []*vm.ERC20Contract) {
 	msg, err := tx.AsMessage(types.MakeSigner(config, header.Number), header.BaseFee)
 	if err != nil {
 		return nil, err, nil, nil
@@ -213,13 +213,13 @@ func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *commo
 	return applyTransaction(msg, config, bc, author, gp, statedb, header.Number, header.Hash(), tx, usedGas, vmenv)
 }
 
-func afterApplyTransaction(vmenv *vm.EVM, failed bool) ([]*vm.InnerTxInternal, []*vm.ERC20Contract) {
+func afterApplyTransaction(vmenv *vm.EVM, failed bool) ([]*vm.InnerTx, []*vm.ERC20Contract) {
 	innerTxs := checkTransaction(vmenv, failed)
 	erc20s := vmenv.Contracts
 	return innerTxs, erc20s
 }
 
-func checkTransaction(vmenv *vm.EVM, failed bool) []*vm.InnerTxInternal {
+func checkTransaction(vmenv *vm.EVM, failed bool) []*vm.InnerTx {
 	if failed == true {
 		for _, errIx := range vmenv.InnerTxies {
 			errIx.IsError = true

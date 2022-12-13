@@ -93,7 +93,7 @@ func ReadToken(key []byte) []byte {
 	return rtn
 }
 
-func WriteTx(hash string, ix []*InnerTxExport) error {
+func WriteTx(hash string, ix []*InnerTxBasic) error {
 	row, _ := rlp.EncodeToBytes(ix)
 	err := txDB.Set([]byte(hash), row)
 	if err != nil {
@@ -103,7 +103,7 @@ func WriteTx(hash string, ix []*InnerTxExport) error {
 	return nil
 }
 
-func WriteContractCreationInfo(contractAddr string, info *ContractCreationInfoExport) error {
+func WriteContractCreationInfo(contractAddr string, info *ContractCreationInfo) error {
 	row, _ := rlp.EncodeToBytes(info)
 	err := contractCreationDB.Set([]byte(strings.ToLower(contractAddr)), row)
 	if err != nil {
@@ -134,13 +134,13 @@ func WriteToken(key []byte, value []byte) error {
 	return nil
 }
 
-func GetFromDB(hash string) []InnerTxExport {
+func GetFromDB(hash string) []InnerTxBasic {
 	result, err := txDB.Get([]byte(hash))
 	if err != nil {
 		return nil
 	}
 
-	innerTxs := make([]InnerTxExport, 0)
+	innerTxs := make([]InnerTxBasic, 0)
 	rlp.DecodeBytes(result, &innerTxs)
 	return innerTxs
 }
@@ -156,13 +156,13 @@ func GetBlockDB(blockHash string) []string {
 	return innerTxs
 }
 
-func GetContractCreationDB(contractAddr string) (ContractCreationInfoExport, error) {
+func GetContractCreationDB(contractAddr string) (ContractCreationInfo, error) {
 	result, err := contractCreationDB.Get([]byte(strings.ToLower(contractAddr)))
 	if err != nil {
-		return ContractCreationInfoExport{}, nil
+		return ContractCreationInfo{}, nil
 	}
 
-	var info ContractCreationInfoExport
+	var info ContractCreationInfo
 	err = rlp.DecodeBytes(result, &info)
 	return info, err
 }

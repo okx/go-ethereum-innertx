@@ -393,16 +393,21 @@ func opExtCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext)
 // opExtCodeHash returns the code hash of a specified account.
 // There are several cases when the function is called, while we can relay everything
 // to `state.GetCodeHash` function to ensure the correctness.
-//   (1) Caller tries to get the code hash of a normal contract account, state
+//
+//	(1) Caller tries to get the code hash of a normal contract account, state
+//
 // should return the relative code hash and set it as the result.
 //
-//   (2) Caller tries to get the code hash of a non-existent account, state should
+//	(2) Caller tries to get the code hash of a non-existent account, state should
+//
 // return common.Hash{} and zero will be set as the result.
 //
-//   (3) Caller tries to get the code hash for an account without contract code,
+//	(3) Caller tries to get the code hash for an account without contract code,
+//
 // state should return emptyCodeHash(0xc5d246...) as the result.
 //
-//   (4) Caller tries to get the code hash of a precompiled account, the result
+//	(4) Caller tries to get the code hash of a precompiled account, the result
+//
 // should be zero or emptyCodeHash.
 //
 // It is worth noting that in order to avoid unnecessary create and clean,
@@ -411,10 +416,12 @@ func opExtCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext)
 // If the precompile account is not transferred any amount on a private or
 // customized chain, the return value will be zero.
 //
-//   (5) Caller tries to get the code hash for an account which is marked as suicided
+//	(5) Caller tries to get the code hash for an account which is marked as suicided
+//
 // in the current transaction, the code hash of this account should be returned.
 //
-//   (6) Caller tries to get the code hash for an account which is marked as deleted,
+//	(6) Caller tries to get the code hash for an account which is marked as deleted,
+//
 // this account should be regarded as a non-existent account and zero should be returned.
 func opExtCodeHash(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	slot := scope.Stack.peek()
@@ -919,7 +926,7 @@ func makeSwap(size int64) executionFunc {
 	}
 }
 
-func beforeOp(interpreter *EVMInterpreter, callTx *InnerTxInternal) int {
+func beforeOp(interpreter *EVMInterpreter, callTx *InnerTx) int {
 	if interpreter.evm.lastDepth == interpreter.evm.depth {
 		interpreter.evm.index++
 		interpreter.evm.indexMap[interpreter.evm.depth] = interpreter.evm.index
@@ -946,11 +953,11 @@ func beforeOp(interpreter *EVMInterpreter, callTx *InnerTxInternal) int {
 	return newIndex
 }
 
-func afterSuicide(interpreter *EVMInterpreter, newIndex int, callTx *InnerTxInternal) {
+func afterSuicide(interpreter *EVMInterpreter, newIndex int, callTx *InnerTx) {
 	callTx.IsError = false
 }
 
-func afterCall(interpreter *EVMInterpreter, newIndex int, value big.Int, err error, callTx *InnerTxInternal) {
+func afterCall(interpreter *EVMInterpreter, newIndex int, value big.Int, err error, callTx *InnerTx) {
 	if err == nil {
 		callTx.IsError = false
 	} else {
@@ -961,7 +968,7 @@ func afterCall(interpreter *EVMInterpreter, newIndex int, value big.Int, err err
 	}
 }
 
-func afterCreate(interpreter *EVMInterpreter, newIndex int, callTx *InnerTxInternal, addr common.Address, suberr error) {
+func afterCreate(interpreter *EVMInterpreter, newIndex int, callTx *InnerTx, addr common.Address, suberr error) {
 	//添加to地址
 	callTx.To = addr.Hash().String()
 	if suberr == nil {
@@ -974,9 +981,9 @@ func afterCreate(interpreter *EVMInterpreter, newIndex int, callTx *InnerTxInter
 	}
 }
 
-func initOp(name string, evm *EVM, input []byte, fromAddr common.Address, toAddr common.Address, codeAddr common.Address, gas uint64, value big.Int, salt *uint256.Int) *InnerTxInternal {
-	callTx := &InnerTxInternal{
-		InnerTxExport: InnerTxExport{
+func initOp(name string, evm *EVM, input []byte, fromAddr common.Address, toAddr common.Address, codeAddr common.Address, gas uint64, value big.Int, salt *uint256.Int) *InnerTx {
+	callTx := &InnerTx{
+		InnerTxBasic: InnerTxBasic{
 			CallType: name,
 			From:     fromAddr.Hash().String(),
 		},

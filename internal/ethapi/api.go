@@ -728,10 +728,10 @@ func (s *PublicBlockChainAPI) GetHeaderByHash(ctx context.Context, hash common.H
 }
 
 // GetBlockByNumber returns the requested canonical block.
-// * When blockNr is -1 the chain head is returned.
-// * When blockNr is -2 the pending chain head is returned.
-// * When fullTx is true all transactions in the block are returned, otherwise
-//   only the transaction hash is returned.
+//   - When blockNr is -1 the chain head is returned.
+//   - When blockNr is -2 the pending chain head is returned.
+//   - When fullTx is true all transactions in the block are returned, otherwise
+//     only the transaction hash is returned.
 func (s *PublicBlockChainAPI) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber, fullTx bool) (map[string]interface{}, error) {
 	block, err := s.b.BlockByNumber(ctx, number)
 	if block != nil && err == nil {
@@ -2077,7 +2077,7 @@ func toHexSlice(b [][]byte) []string {
 	return r
 }
 
-//合约信息
+// 合约信息
 func (s *PublicBlockChainAPI) TokenInitInfo(ctx context.Context, contractAddr common.Address) vm.TokenInitInfo {
 	tokenInfoByte := vm.ReadToken([]byte(contractAddr.Hex()))
 	var tokenInfo vm.TokenInitInfo
@@ -2085,14 +2085,14 @@ func (s *PublicBlockChainAPI) TokenInitInfo(ctx context.Context, contractAddr co
 	return tokenInfo
 }
 
-//内部交易
-func (s *PublicBlockChainAPI) GetInternalTransactions(ctx context.Context, txHash string) []vm.InnerTxExport {
+// 内部交易
+func (s *PublicBlockChainAPI) GetInternalTransactions(ctx context.Context, txHash string) []vm.InnerTxBasic {
 	return vm.GetFromDB(txHash)
 }
 
-//按块查询
-func (s *PublicBlockChainAPI) GetBlockInternalTransactions(ctx context.Context, txHash string) map[string][]vm.InnerTxExport {
-	var rtn = make(map[string][]vm.InnerTxExport)
+// 按块查询
+func (s *PublicBlockChainAPI) GetBlockInternalTransactions(ctx context.Context, txHash string) map[string][]vm.InnerTxBasic {
+	var rtn = make(map[string][]vm.InnerTxBasic)
 	blockHashes := vm.GetBlockDB(txHash)
 	if blockHashes != nil {
 		for _, txHash := range blockHashes {
