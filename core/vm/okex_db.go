@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -103,7 +104,9 @@ func WriteTx(hash string, ix []*InnerTxBasic) error {
 	return nil
 }
 
-func WriteContractCreationInfo(contractAddr string, info *ContractCreationInfo) error {
+func WriteContractCreationInfo(addr string, info *ContractCreationInfo) error {
+	contractAddr := common.HexToAddress(addr).String()
+
 	row, _ := rlp.EncodeToBytes(info)
 	err := contractCreationDB.Set([]byte(strings.ToLower(contractAddr)), row)
 	if err != nil {
@@ -156,7 +159,9 @@ func GetBlockDB(blockHash string) []string {
 	return innerTxs
 }
 
-func GetContractCreationDB(contractAddr string) (ContractCreationInfo, error) {
+func GetContractCreationDB(addr common.Address) (ContractCreationInfo, error) {
+	contractAddr := addr.String()
+
 	result, err := contractCreationDB.Get([]byte(strings.ToLower(contractAddr)))
 	if err != nil {
 		return ContractCreationInfo{}, nil
