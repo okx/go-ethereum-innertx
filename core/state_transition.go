@@ -329,8 +329,10 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	if contractCreation {
 		var newAddr common.Address
 		//addToAddress
+		fromNonce := fmt.Sprintf("%d", st.state.GetNonce(sender.Address()))
 		ret, newAddr, st.gas, vmerr = st.evm.Create(sender, st.data, st.gas, st.value)
 		callTx.To = newAddr.String()
+		callTx.FromNonce = fromNonce
 		//addToAddressEnd
 	} else {
 		// Increment the nonce for the next transaction
