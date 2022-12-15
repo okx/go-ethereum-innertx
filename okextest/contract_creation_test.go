@@ -3,7 +3,6 @@ package contractverifier
 import (
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"math/big"
 	"path/filepath"
@@ -58,7 +57,7 @@ func TestInnerTxContractCreate(t *testing.T) {
 	evm := tr.executeTx(vm.Config{}, tx, t)
 	assert.Equal(t, 1, len(evm.InnerTxies))
 	factoryA.addr = common.HexToAddress(evm.InnerTxies[0].To)
-	expect1 := createInnerTx(0, "", "", address1.String(), factoryA.addr.String(), 0, "", &nonceBeforeTx, nil, nil)
+	expect1 := createInnerTx(0, "", "", address1.String(), factoryA.addr.String(), 0, "", nonceBeforeTx, nil, nil)
 	assert.Equal(t, expect1, evm.InnerTxies[0])
 
 	// test createFactoryA.createB
@@ -69,8 +68,8 @@ func TestInnerTxContractCreate(t *testing.T) {
 	evm = tr.executeTx(vm.Config{}, tx, t)
 	assert.Equal(t, 2, len(evm.InnerTxies))
 	factoryB.addr = common.HexToAddress(evm.InnerTxies[1].To)
-	expect1 = createInnerTx(0, "", "", address2.String(), factoryA.addr.String(), 0, "", nil, nil, nil)
-	expect2 := createInnerTx(1, "create", "create_0", factoryA.addr.Hash().String(), factoryB.addr.Hash().String(), 0x4a497e, "0", &factoryANonce, nil, nil)
+	expect1 = createInnerTx(0, "", "", address2.String(), factoryA.addr.String(), 0, "", 0, nil, nil)
+	expect2 := createInnerTx(1, "create", "create_0", factoryA.addr.Hash().String(), factoryB.addr.Hash().String(), 0x4a497e, "0", factoryANonce, nil, nil)
 	assert.Equal(t, expect1, evm.InnerTxies[0])
 	assert.Equal(t, expect2, evm.InnerTxies[1])
 
@@ -82,8 +81,8 @@ func TestInnerTxContractCreate(t *testing.T) {
 	evm = tr.executeTx(vm.Config{}, tx, t)
 	assert.Equal(t, 2, len(evm.InnerTxies))
 	factoryC.addr = common.HexToAddress(evm.InnerTxies[1].To)
-	expect1 = createInnerTx(0, "", "", address2.String(), factoryB.addr.String(), 0, "", nil, nil, nil)
-	expect2 = createInnerTx(1, "create", "create_0", factoryB.addr.Hash().String(), factoryC.addr.Hash().String(), 0x4a4a60, "0", &factoryBNonce, nil, nil)
+	expect1 = createInnerTx(0, "", "", address2.String(), factoryB.addr.String(), 0, "", 0, nil, nil)
+	expect2 = createInnerTx(1, "create", "create_0", factoryB.addr.Hash().String(), factoryC.addr.Hash().String(), 0x4a4a60, "0", factoryBNonce, nil, nil)
 	assert.Equal(t, expect1, evm.InnerTxies[0])
 	assert.Equal(t, expect2, evm.InnerTxies[1])
 
@@ -95,8 +94,8 @@ func TestInnerTxContractCreate(t *testing.T) {
 	evm = tr.executeTx(vm.Config{}, tx, t)
 	assert.Equal(t, 2, len(evm.InnerTxies))
 	bank.addr = common.HexToAddress(evm.InnerTxies[1].To)
-	expect1 = createInnerTx(0, "", "", address2.String(), factoryC.addr.String(), 0, "", nil, nil, nil)
-	expect2 = createInnerTx(1, "create", "create_0", factoryC.addr.Hash().String(), bank.addr.Hash().String(), 0x4a4c12, "0", &factoryCNonce, nil, nil)
+	expect1 = createInnerTx(0, "", "", address2.String(), factoryC.addr.String(), 0, "", 0, nil, nil)
+	expect2 = createInnerTx(1, "create", "create_0", factoryC.addr.Hash().String(), bank.addr.Hash().String(), 0x4a4c12, "0", factoryCNonce, nil, nil)
 	assert.Equal(t, expect1, evm.InnerTxies[0])
 	assert.Equal(t, expect2, evm.InnerTxies[1])
 }
@@ -138,7 +137,7 @@ func TestInnerTxContractCreate2(t *testing.T) {
 	evm := tr.executeTx(vm.Config{}, tx, t)
 	assert.Equal(t, 1, len(evm.InnerTxies))
 	factoryA.addr = common.HexToAddress(evm.InnerTxies[0].To)
-	expect1 := createInnerTx(0, "", "", address1.String(), factoryA.addr.String(), 0, "", &nonceBeforeTx, nil, nil)
+	expect1 := createInnerTx(0, "", "", address1.String(), factoryA.addr.String(), 0, "", nonceBeforeTx, nil, nil)
 	assert.Equal(t, expect1, evm.InnerTxies[0])
 
 	// test create2FactoryA.createB
@@ -147,8 +146,8 @@ func TestInnerTxContractCreate2(t *testing.T) {
 	evm = tr.executeTx(vm.Config{}, tx, t)
 	assert.Equal(t, 2, len(evm.InnerTxies))
 	factoryB.addr = common.HexToAddress(evm.InnerTxies[1].To)
-	expect1 = createInnerTx(0, "", "", address2.String(), factoryA.addr.String(), 0, "", nil, nil, nil)
-	expect2 := createInnerTx(1, "create2", "create2_0", factoryA.addr.Hash().String(), factoryB.addr.Hash().String(), 0x4a4762, "0", nil, factoryA.create2Salt[:], factoryB.codehash(&address2))
+	expect1 = createInnerTx(0, "", "", address2.String(), factoryA.addr.String(), 0, "", 0, nil, nil)
+	expect2 := createInnerTx(1, "create2", "create2_0", factoryA.addr.Hash().String(), factoryB.addr.Hash().String(), 0x4a4762, "0", 0, factoryA.create2Salt[:], factoryB.codehash(&address2))
 	assert.Equal(t, expect1, evm.InnerTxies[0])
 	assert.Equal(t, expect2, evm.InnerTxies[1])
 
@@ -158,8 +157,8 @@ func TestInnerTxContractCreate2(t *testing.T) {
 	evm = tr.executeTx(vm.Config{}, tx, t)
 	assert.Equal(t, 2, len(evm.InnerTxies))
 	factoryC.addr = common.HexToAddress(evm.InnerTxies[1].To)
-	expect1 = createInnerTx(0, "", "", address2.String(), factoryB.addr.String(), 0, "", nil, nil, nil)
-	expect2 = createInnerTx(1, "create2", "create2_0", factoryB.addr.Hash().String(), factoryC.addr.Hash().String(), 0x4a4918, "0", nil, factoryB.create2Salt[:], factoryC.codehash(&address2))
+	expect1 = createInnerTx(0, "", "", address2.String(), factoryB.addr.String(), 0, "", 0, nil, nil)
+	expect2 = createInnerTx(1, "create2", "create2_0", factoryB.addr.Hash().String(), factoryC.addr.Hash().String(), 0x4a4918, "0", 0, factoryB.create2Salt[:], factoryC.codehash(&address2))
 	assert.Equal(t, expect1, evm.InnerTxies[0])
 	assert.Equal(t, expect2, evm.InnerTxies[1])
 
@@ -169,8 +168,8 @@ func TestInnerTxContractCreate2(t *testing.T) {
 	evm = tr.executeTx(vm.Config{}, tx, t)
 	assert.Equal(t, 2, len(evm.InnerTxies))
 	bank2.addr = common.HexToAddress(evm.InnerTxies[1].To)
-	expect1 = createInnerTx(0, "", "", address2.String(), factoryC.addr.String(), 0, "", nil, nil, nil)
-	expect2 = createInnerTx(1, "create2", "create2_0", factoryC.addr.Hash().String(), bank2.addr.Hash().String(), 0x4a4baa, "0", nil, factoryC.create2Salt[:], bank2.codehash(nil))
+	expect1 = createInnerTx(0, "", "", address2.String(), factoryC.addr.String(), 0, "", 0, nil, nil)
+	expect2 = createInnerTx(1, "create2", "create2_0", factoryC.addr.Hash().String(), bank2.addr.Hash().String(), 0x4a4baa, "0", 0, factoryC.create2Salt[:], bank2.codehash(nil))
 	assert.Equal(t, expect1, evm.InnerTxies[0])
 	assert.Equal(t, expect2, evm.InnerTxies[1])
 }
@@ -181,11 +180,7 @@ func addressByPrivateKey(prvKey string, t *testing.T) common.Address {
 	return crypto.PubkeyToAddress(privateKey.PublicKey)
 }
 
-func createInnerTx(depth int64, callType, name, from, to string, gasUsed uint64, valueWei string, fromNonce *uint64, salt, codehash []byte) *vm.InnerTx {
-	nonce := ""
-	if fromNonce != nil {
-		nonce = fmt.Sprintf("%d", *fromNonce)
-	}
+func createInnerTx(depth int64, callType, name, from, to string, gasUsed uint64, valueWei string, fromNonce uint64, salt, codehash []byte) *vm.InnerTx {
 	saltStr := ""
 	if salt != nil {
 		saltStr = hex.EncodeToString(salt)
@@ -212,7 +207,7 @@ func createInnerTx(depth int64, callType, name, from, to string, gasUsed uint64,
 			ValueWei:      valueWei,
 			Error:         "",
 		},
-		FromNonce:       nonce,
+		FromNonce:       fromNonce,
 		Create2Salt:     saltStr,
 		Create2CodeHash: codehashStr,
 	}

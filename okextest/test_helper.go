@@ -47,7 +47,7 @@ type callTrace struct {
 	Value           *hexutil.Big    `json:"value,omitempty"`
 	Error           string          `json:"error,omitempty"`
 	Calls           []callTrace     `json:"calls,omitempty"`
-	FromNonce       string          `json:"fromNonce,omitempty"`
+	FromNonce       uint64          `json:"fromNonce,omitempty"`
 	Create2Salt     string          `json:"create2Salt,omitempty"`
 	Create2CodeHash string          `json:"create2CodeHash,omitempty"`
 }

@@ -33,7 +33,7 @@ type InnerTxBasic struct {
 type ContractCreationInfo struct {
 	Creator         string `json:"creator"`
 	CreateType      string `json:"create_type"`
-	NonceOnCreation string `json:"nonce_on_creation"`
+	NonceOnCreation uint64 `json:"nonce_on_creation"`
 	Salt            string `json:"salt"`
 	CodeHash        string `json:"code_hash"`
 }
@@ -66,7 +66,7 @@ type BlockInnerData struct {
 type InnerTx struct {
 	InnerTxBasic
 
-	FromNonce       string
+	FromNonce       uint64
 	Create2Salt     string
 	Create2CodeHash string
 }

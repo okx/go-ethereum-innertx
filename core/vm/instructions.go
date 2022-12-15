@@ -985,7 +985,7 @@ func initOp(name string, evm *EVM, input []byte, fromAddr common.Address, toAddr
 	case "create":
 		callTx.ValueWei = value.String()
 		callTx.GasUsed = gas
-		callTx.FromNonce = fmt.Sprintf("%d", evm.StateDB.GetNonce(fromAddr))
+		callTx.FromNonce = evm.StateDB.GetNonce(fromAddr)
 	case "create2":
 		callTx.ValueWei = value.String()
 		callTx.GasUsed = gas

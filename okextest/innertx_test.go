@@ -25,12 +25,12 @@ type callInfo struct {
 	Output          string
 	Value           string
 	ValueWei        string
-	FromNonce       string
+	FromNonce       uint64
 	Create2Salt     string
 	Create2CodeHash string
 }
 
-func newCallInfo(depth int64, callType, name, from, to, input, output, value, valueWei string, fromNonce, salt, codehash string) callInfo {
+func newCallInfo(depth int64, callType, name, from, to, input, output, value, valueWei string, fromNonce uint64, salt, codehash string) callInfo {
 	return callInfo{
 		Dept:            depth,
 		CallType:        callType,
@@ -184,7 +184,7 @@ func TestOKCInnerTxError(t *testing.T) {
 					Output:    "",
 					Value:     "",
 					ValueWei:  "0",
-					FromNonce: "789",
+					FromNonce: 789,
 				},
 			},
 		},
