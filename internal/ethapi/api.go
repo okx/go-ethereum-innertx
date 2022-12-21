@@ -2086,13 +2086,13 @@ func (s *PublicBlockChainAPI) TokenInitInfo(ctx context.Context, contractAddr co
 }
 
 //内部交易
-func (s *PublicBlockChainAPI) GetInternalTransactions(ctx context.Context, txHash string) []vm.InnerTx {
+func (s *PublicBlockChainAPI) GetInternalTransactions(ctx context.Context, txHash string) []vm.InnerTxBasic {
 	return vm.GetFromDB(txHash)
 }
 
 //按块查询
-func (s *PublicBlockChainAPI) GetBlockInternalTransactions(ctx context.Context, txHash string) map[string][]vm.InnerTx {
-	var rtn = make(map[string][]vm.InnerTx)
+func (s *PublicBlockChainAPI) GetBlockInternalTransactions(ctx context.Context, txHash string) map[string][]vm.InnerTxBasic {
+	var rtn = make(map[string][]vm.InnerTxBasic)
 	blockHashes := vm.GetBlockDB(txHash)
 	if blockHashes != nil {
 		for _, txHash := range blockHashes {

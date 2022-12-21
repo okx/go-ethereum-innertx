@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
 
 	"io/ioutil"
@@ -96,7 +98,8 @@ func (ct callTracerTest) GetArrayResult() []verifierTest {
 // Iterates over all the input-output datasets in the tracer test harness and
 // runs the JavaScript tracers against them.
 func TestOKVerify(t *testing.T) {
-	files, err := ioutil.ReadDir("testdata")
+	testdir := filepath.Join("testdata", "innertx")
+	files, err := ioutil.ReadDir(testdir)
 	if err != nil {
 		t.Fatalf("failed to retrieve tracer test suite: %v", err)
 	}
@@ -107,7 +110,7 @@ func TestOKVerify(t *testing.T) {
 			t.Parallel()
 
 			// Call tracer test found, read if from disk
-			blob, err := ioutil.ReadFile(filepath.Join("testdata", file.Name()))
+			blob, err := ioutil.ReadFile(filepath.Join(testdir, file.Name()))
 			if err != nil {
 				t.Fatalf("failed to read testcase: %v", err)
 			}
@@ -116,8 +119,14 @@ func TestOKVerify(t *testing.T) {
 				t.Fatalf("failed to parse testcase: %v", err)
 			}
 
+			tx := new(types.Transaction)
+			if err := rlp.DecodeBytes(common.FromHex(test.Input), tx); err != nil {
+				t.Fatalf("failed to parse testcase input: %v", err)
+			}
+
 			verifierTest := NewContractVerifier()
-			executeTx(test, vm.Config{ContractVerifier: verifierTest}, t)
+			tr := newTxRunner(test.Genesis, test.Context)
+			tr.executeTx(vm.Config{ContractVerifier: verifierTest}, tx, t)
 
 			actual := verifierTest.verifiers
 			excepted := test.GetArrayResult()

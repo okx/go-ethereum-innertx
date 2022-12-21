@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -28,6 +30,8 @@ var (
 	txDB    OKDB
 	blockDB OKDB
 	tokenDB OKDB
+
+	contractCreationDB OKDB
 )
 
 func InitDB(dir string, creator DBCreator) error {
@@ -51,6 +55,7 @@ func InitDB(dir string, creator DBCreator) error {
 	txDB = newDB("InnerTxDB", creator, dbDir)
 	blockDB = newDB("InnerBlockDB", creator, dbDir)
 	tokenDB = newDB("TokenDB", creator, dbDir)
+	contractCreationDB = newDB("ContractCreationDB", creator, dbDir)
 
 	return nil
 }
@@ -76,6 +81,10 @@ func CloseDB() (errors []error) {
 		errors = append(errors, err)
 	}
 
+	if err := contractCreationDB.Close(); err != nil {
+		errors = append(errors, err)
+	}
+
 	log.Info("Close innerTx DB")
 	return errors
 }
@@ -85,11 +94,23 @@ func ReadToken(key []byte) []byte {
 	return rtn
 }
 
-func WriteTx(hash string, ix []*InnerTx) error {
+func WriteTx(hash string, ix []*InnerTxBasic) error {
 	row, _ := rlp.EncodeToBytes(ix)
 	err := txDB.Set([]byte(hash), row)
 	if err != nil {
 		log.Info("WriteTx error:" + hash)
+		return err
+	}
+	return nil
+}
+
+func WriteContractCreationInfo(addr string, info *ContractCreationInfo) error {
+	contractAddr := common.HexToAddress(addr).String()
+
+	row, _ := rlp.EncodeToBytes(info)
+	err := contractCreationDB.Set([]byte(strings.ToLower(contractAddr)), row)
+	if err != nil {
+		log.Info("WriteContractCreationInfo error:" + contractAddr)
 		return err
 	}
 	return nil
@@ -116,13 +137,13 @@ func WriteToken(key []byte, value []byte) error {
 	return nil
 }
 
-func GetFromDB(hash string) []InnerTx {
+func GetFromDB(hash string) []InnerTxBasic {
 	result, err := txDB.Get([]byte(hash))
 	if err != nil {
 		return nil
 	}
 
-	innerTxs := make([]InnerTx, 0)
+	innerTxs := make([]InnerTxBasic, 0)
 	rlp.DecodeBytes(result, &innerTxs)
 	return innerTxs
 }
@@ -136,6 +157,19 @@ func GetBlockDB(blockHash string) []string {
 	var innerTxs []string
 	rlp.DecodeBytes(result, &innerTxs)
 	return innerTxs
+}
+
+func GetContractCreationDB(addr common.Address) (ContractCreationInfo, error) {
+	contractAddr := addr.String()
+
+	result, err := contractCreationDB.Get([]byte(strings.ToLower(contractAddr)))
+	if err != nil {
+		return ContractCreationInfo{}, nil
+	}
+
+	var info ContractCreationInfo
+	err = rlp.DecodeBytes(result, &info)
+	return info, err
 }
 
 // We defensively turn nil keys or values into []byte{} for

@@ -3,6 +3,7 @@ package contractverifier
 import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"math/big"
 	"strings"
@@ -16,7 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // callTracerTest defines a single test to check the call tracer against.
@@ -37,24 +37,38 @@ type callContext struct {
 
 // callTrace is the result of a callTracer run.
 type callTrace struct {
-	Type    string          `json:"type"`
-	From    common.Address  `json:"from"`
-	To      common.Address  `json:"to"`
-	Input   hexutil.Bytes   `json:"input"`
-	Output  hexutil.Bytes   `json:"output"`
-	Gas     *hexutil.Uint64 `json:"gas,omitempty"`
-	GasUsed *hexutil.Uint64 `json:"gasUsed,omitempty"`
-	Value   *hexutil.Big    `json:"value,omitempty"`
-	Error   string          `json:"error,omitempty"`
-	Calls   []callTrace     `json:"calls,omitempty"`
+	Type            string          `json:"type"`
+	From            common.Address  `json:"from"`
+	To              common.Address  `json:"to"`
+	Input           hexutil.Bytes   `json:"input"`
+	Output          hexutil.Bytes   `json:"output"`
+	Gas             *hexutil.Uint64 `json:"gas,omitempty"`
+	GasUsed         *hexutil.Uint64 `json:"gasUsed,omitempty"`
+	Value           *hexutil.Big    `json:"value,omitempty"`
+	Error           string          `json:"error,omitempty"`
+	Calls           []callTrace     `json:"calls,omitempty"`
+	FromNonce       uint64          `json:"fromNonce,omitempty"`
+	Create2Salt     string          `json:"create2Salt,omitempty"`
+	Create2CodeHash string          `json:"create2CodeHash,omitempty"`
 }
 
-func executeTx(test *callTracerTest, evmConfig vm.Config, t *testing.T) (*vm.EVM, *state.StateDB) {
-	tx := new(types.Transaction)
-	if err := rlp.DecodeBytes(common.FromHex(test.Input), tx); err != nil {
-		t.Fatalf("failed to parse testcase input: %v", err)
+type txRunner struct {
+	genesis *core.Genesis
+	callCtx *callContext
+	statedb *state.StateDB
+}
+
+func newTxRunner(genesis *core.Genesis, callCtx *callContext) *txRunner {
+	_, statedb := makePreState(rawdb.NewMemoryDatabase(), genesis.Alloc, false)
+	return &txRunner{
+		genesis: genesis,
+		callCtx: callCtx,
+		statedb: statedb,
 	}
-	signer := types.MakeSigner(test.Genesis.Config, new(big.Int).SetUint64(uint64(test.Context.Number)))
+}
+
+func (tr *txRunner) executeTx(evmConfig vm.Config, tx *types.Transaction, t *testing.T) *vm.EVM {
+	signer := types.MakeSigner(tr.genesis.Config, new(big.Int).SetUint64(uint64(tr.callCtx.Number)))
 	origin, _ := signer.Sender(tx)
 	txContext := vm.TxContext{
 		Origin:   origin,
@@ -63,15 +77,15 @@ func executeTx(test *callTracerTest, evmConfig vm.Config, t *testing.T) (*vm.EVM
 	context := vm.BlockContext{
 		CanTransfer: core.CanTransfer,
 		Transfer:    core.Transfer,
-		Coinbase:    test.Context.Miner,
-		BlockNumber: new(big.Int).SetUint64(uint64(test.Context.Number)),
-		Time:        new(big.Int).SetUint64(uint64(test.Context.Time)),
-		Difficulty:  (*big.Int)(test.Context.Difficulty),
-		GasLimit:    uint64(test.Context.GasLimit),
+		Coinbase:    tr.callCtx.Miner,
+		BlockNumber: new(big.Int).SetUint64(uint64(tr.callCtx.Number)),
+		Time:        new(big.Int).SetUint64(uint64(tr.callCtx.Time)),
+		Difficulty:  (*big.Int)(tr.callCtx.Difficulty),
+		GasLimit:    uint64(tr.callCtx.GasLimit),
+		BaseFee:     big.NewInt(100),
 	}
-	_, statedb := makePreState(rawdb.NewMemoryDatabase(), test.Genesis.Alloc, false)
 
-	evm := vm.NewEVM(context, txContext, statedb, test.Genesis.Config, evmConfig)
+	evm := vm.NewEVM(context, txContext, tr.statedb, tr.genesis.Config, evmConfig)
 
 	msg, err := tx.AsMessage(signer, nil)
 	if err != nil {
@@ -82,7 +96,8 @@ func executeTx(test *callTracerTest, evmConfig vm.Config, t *testing.T) (*vm.EVM
 		t.Fatalf("failed to execute transaction: %v", err)
 	}
 
-	return evm, statedb
+	return evm
+
 }
 
 func makePreState(db ethdb.Database, accounts core.GenesisAlloc, snapshotter bool) (*snapshot.Tree, *state.StateDB) {
@@ -114,4 +129,33 @@ func camel(str string) string {
 		pieces[i] = string(unicode.ToUpper(rune(pieces[i][0]))) + pieces[i][1:]
 	}
 	return strings.Join(pieces, "")
+}
+
+func buildSignedTx(prvKey, toAddress string, nonce uint64, value int64 /*in wei*/, data []byte) (*types.Transaction, error) {
+	const (
+		defaultChainID = 3
+		//value    = 0 /*in wei*/
+		defaultGasLimit = 5000000
+		defaultGasPrice = 21000
+	)
+	privateKey, err := crypto.HexToECDSA(prvKey)
+	if err != nil {
+		panic(err)
+	}
+
+	var to *common.Address = nil
+	if len(toAddress) != 0 {
+		addr := common.HexToAddress(toAddress)
+		to = &addr
+	}
+
+	tx := types.NewTx(&types.LegacyTx{
+		Nonce:    nonce,
+		To:       to,
+		Value:    big.NewInt(value),
+		Gas:      defaultGasLimit,
+		GasPrice: big.NewInt(defaultGasPrice),
+		Data:     data,
+	})
+	return types.SignTx(tx, types.NewEIP155Signer(big.NewInt(defaultChainID)), privateKey)
 }
