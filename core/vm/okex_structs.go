@@ -58,7 +58,7 @@ type BlockInnerData struct {
 	BlockHash           string
 	TxHashes            []string
 	TxMap               map[string][]*InnerTxBasic
-	ContractCreationMap map[string]*ContractCreationInfo
+	ContractCreationMap map[string]map[string]*ContractCreationInfo
 	ContractList        []*ERC20Contract
 }
 
