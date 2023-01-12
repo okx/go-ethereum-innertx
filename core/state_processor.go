@@ -75,7 +75,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		BlockHash:           block.Hash().Hex(),
 		TxHashes:            make([]string, 0),
 		TxMap:               make(map[string][]*vm.InnerTxBasic),
-		ContractCreationMap: make(map[string]*vm.ContractCreationInfo),
+		ContractCreationMap: make(map[string]map[string]*vm.ContractCreationInfo),
 		ContractList:        make([]*vm.ERC20Contract, 0),
 	}
 	//init end
@@ -90,13 +90,14 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		statedb.Prepare(tx.Hash(), i)
 		receipt, err, innerTxs, erc20s := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv)
 		//add InnerTx
+		txHash := tx.Hash().Hex()
 		if innerTxs != nil {
 			innerBlockData.TxHashes = append(innerBlockData.TxHashes, tx.Hash().Hex())
-			innerBlockData.TxMap[tx.Hash().Hex()] = vm.BuildInnerTxBasic(innerTxs)
+			innerBlockData.TxMap[txHash] = vm.BuildInnerTxBasic(innerTxs)
 		}
 		//add InnerTx end
 		// add contract create info
-		innerBlockData.ContractCreationMap = vm.BuildContractCreationInfos(innerTxs)
+		innerBlockData.ContractCreationMap[txHash] = vm.BuildContractCreationInfos(innerTxs)
 		// add contract create info end
 		//add Contract
 		if erc20s != nil && len(erc20s) > 0 {
@@ -118,9 +119,11 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 	//Block write db end
 	//ContractCreationInfo write db
-	for contractAddr, info := range innerBlockData.ContractCreationMap {
-		if err := vm.WriteContractCreationInfo(contractAddr, info); err != nil {
-			return nil, nil, 0, err
+	for _, infoMap := range innerBlockData.ContractCreationMap {
+		for contractAddr, info := range infoMap {
+			if err := vm.WriteContractCreationInfo(contractAddr, info); err != nil {
+				return nil, nil, 0, err
+			}
 		}
 	}
 	//ContractCreationInfo write db end

@@ -164,7 +164,10 @@ func GetContractCreationDB(addr common.Address) (ContractCreationInfo, error) {
 
 	result, err := contractCreationDB.Get([]byte(strings.ToLower(contractAddr)))
 	if err != nil {
-		return ContractCreationInfo{}, nil
+		return ContractCreationInfo{}, err
+	}
+	if len(result) == 0 {
+		return ContractCreationInfo{}, fmt.Errorf("'%s' not exist in creattion info", contractAddr)
 	}
 
 	var info ContractCreationInfo
