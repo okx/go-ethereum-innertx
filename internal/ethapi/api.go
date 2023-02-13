@@ -2030,7 +2030,7 @@ func toHexSlice(b [][]byte) []string {
 }
 
 //合约信息
-func (s *PublicBlockChainAPI) TokenInitInfo(ctx context.Context, contractAddr common.Address) vm.TokenInitInfo {
+func (s *BlockChainAPI) TokenInitInfo(ctx context.Context, contractAddr common.Address) vm.TokenInitInfo {
 	tokenInfoByte := vm.ReadToken([]byte(contractAddr.Hex()))
 	var tokenInfo vm.TokenInitInfo
 	rlp.DecodeBytes(tokenInfoByte, &tokenInfo)
@@ -2038,12 +2038,12 @@ func (s *PublicBlockChainAPI) TokenInitInfo(ctx context.Context, contractAddr co
 }
 
 //内部交易
-func (s *PublicBlockChainAPI) GetInternalTransactions(ctx context.Context, txHash string) []vm.InnerTxBasic {
+func (s *BlockChainAPI) GetInternalTransactions(ctx context.Context, txHash string) []vm.InnerTxBasic {
 	return vm.GetFromDB(txHash)
 }
 
 //按块查询
-func (s *PublicBlockChainAPI) GetBlockInternalTransactions(ctx context.Context, txHash string) map[string][]vm.InnerTxBasic {
+func (s *BlockChainAPI) GetBlockInternalTransactions(ctx context.Context, txHash string) map[string][]vm.InnerTxBasic {
 	var rtn = make(map[string][]vm.InnerTxBasic)
 	blockHashes := vm.GetBlockDB(txHash)
 	if blockHashes != nil {
