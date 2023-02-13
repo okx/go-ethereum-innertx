@@ -8,33 +8,42 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/assert"
 )
 
 type callInfo struct {
-	Dept     int64
-	CallType string
-	Name     string
-	From     string
-	To       string
-	Input    string
-	Output   string
-	Value    string
-	ValueWei string
+	Dept            int64
+	CallType        string
+	Name            string
+	From            string
+	To              string
+	Input           string
+	Output          string
+	Value           string
+	ValueWei        string
+	FromNonce       uint64
+	Create2Salt     string
+	Create2CodeHash string
 }
 
-func newCallInfo(depth int64, callType, name, from, to, input, output, value, valueWei string) callInfo {
+func newCallInfo(depth int64, callType, name, from, to, input, output, value, valueWei string, fromNonce uint64, salt, codehash string) callInfo {
 	return callInfo{
-		Dept:     depth,
-		CallType: callType,
-		Name:     name,
-		From:     from,
-		To:       to,
-		Input:    input,
-		Output:   output,
-		Value:    value,
-		ValueWei: valueWei,
+		Dept:            depth,
+		CallType:        callType,
+		Name:            name,
+		From:            from,
+		To:              to,
+		Input:           input,
+		Output:          output,
+		Value:           value,
+		ValueWei:        valueWei,
+		FromNonce:       fromNonce,
+		Create2Salt:     salt,
+		Create2CodeHash: codehash,
 	}
 }
 
@@ -66,7 +75,7 @@ func (ct callTrace) getCallInfoArray(depth int, nameSuffix string, t *testing.T)
 		//	value = v
 		//}
 	}
-	ci := newCallInfo(int64(depth), callType, callType+nameSuffix, from, to, "", "", "", valueWei)
+	ci := newCallInfo(int64(depth), callType, callType+nameSuffix, from, to, "", "", "", valueWei, ct.FromNonce, ct.Create2Salt, ct.Create2CodeHash)
 	results = append(results, ci)
 
 	for i, _ := range ct.Calls {
@@ -105,14 +114,15 @@ func innertxsToCallInfo(innertxs []*vm.InnerTx) []callInfo {
 	results := make([]callInfo, 0)
 
 	for _, innertx := range innertxs {
-		ci := newCallInfo(innertx.Dept.Int64(), innertx.CallType, innertx.Name, innertx.From, innertx.To, innertx.Input, innertx.Output, innertx.Value, innertx.ValueWei)
+		ci := newCallInfo(innertx.Dept.Int64(), innertx.CallType, innertx.Name, innertx.From, innertx.To, innertx.Input, innertx.Output, innertx.Value, innertx.ValueWei, innertx.FromNonce, innertx.Create2Salt, innertx.Create2CodeHash)
 		results = append(results, ci)
 	}
 	return results
 }
 
 func TestOKCInnerTx(t *testing.T) {
-	files, err := ioutil.ReadDir("testdata")
+	testdir := filepath.Join("testdata", "innertx")
+	files, err := ioutil.ReadDir(testdir)
 	if err != nil {
 		t.Fatalf("failed to retrieve tracer test suite: %v", err)
 	}
@@ -131,7 +141,7 @@ func TestOKCInnerTx(t *testing.T) {
 		t.Run(camel(strings.TrimSuffix(file.Name(), ".json")), func(t *testing.T) {
 			t.Parallel()
 
-			blob, err := ioutil.ReadFile(filepath.Join("testdata", file.Name()))
+			blob, err := ioutil.ReadFile(filepath.Join(testdir, file.Name()))
 			if err != nil {
 				t.Fatalf("failed to read test file: %v", err)
 			}
@@ -141,7 +151,12 @@ func TestOKCInnerTx(t *testing.T) {
 				t.Fatalf("failed to parse testcase: %v", err)
 			}
 
-			evm, _ := executeTx(test, vm.Config{}, t)
+			tx := new(types.Transaction)
+			if err := rlp.DecodeBytes(common.FromHex(test.Input), tx); err != nil {
+				t.Fatalf("failed to parse testcase input: %v", err)
+			}
+			tr := newTxRunner(test.Genesis, test.Context)
+			evm := tr.executeTx(vm.Config{}, tx, t)
 
 			expect := test.getCallInfoArray(t)
 			actual := innertxsToCallInfo(evm.InnerTxies)
@@ -160,15 +175,16 @@ func TestOKCInnerTxError(t *testing.T) {
 			filename: "inner_create_oog_outer_throw.json",
 			extraCallinfos: []callInfo{
 				{
-					Dept:     1,
-					CallType: "create",
-					Name:     "create_0",
-					From:     "0x0000000000000000000000001d3ddf7caf024f253487e18bc4a15b1a360c170a",
-					To:       "0x0000000000000000000000005cb4a6b902fcb21588c86c3517e797b07cdaadb9",
-					Input:    "",
-					Output:   "",
-					Value:    "",
-					ValueWei: "0",
+					Dept:      1,
+					CallType:  "create",
+					Name:      "create_0",
+					From:      "0x0000000000000000000000001d3ddf7caf024f253487e18bc4a15b1a360c170a",
+					To:        "0x0000000000000000000000005cb4a6b902fcb21588c86c3517e797b07cdaadb9",
+					Input:     "",
+					Output:    "",
+					Value:     "",
+					ValueWei:  "0",
+					FromNonce: 789,
 				},
 			},
 		},
@@ -191,7 +207,7 @@ func TestOKCInnerTxError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(strings.TrimSuffix(tt.filename, ".json"), func(t *testing.T) {
-			blob, err := ioutil.ReadFile(filepath.Join("testdata", tt.filename))
+			blob, err := ioutil.ReadFile(filepath.Join("testdata", "innertx", tt.filename))
 			if err != nil {
 				t.Fatalf("failed to read test file: %v", err)
 			}
@@ -201,7 +217,12 @@ func TestOKCInnerTxError(t *testing.T) {
 				t.Fatalf("failed to parse testcase: %v", err)
 			}
 
-			evm, _ := executeTx(test, vm.Config{}, t)
+			tx := new(types.Transaction)
+			if err := rlp.DecodeBytes(common.FromHex(test.Input), tx); err != nil {
+				t.Fatalf("failed to parse testcase input: %v", err)
+			}
+			tr := newTxRunner(test.Genesis, test.Context)
+			evm := tr.executeTx(vm.Config{}, tx, t)
 
 			expect := append(test.getCallInfoArray(t), tt.extraCallinfos...)
 			actual := innertxsToCallInfo(evm.InnerTxies)

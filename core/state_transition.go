@@ -327,17 +327,21 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	)
 	//add InnerTx
 	callTx := &vm.InnerTx{
-		Dept:    *big.NewInt(0),
-		From:    sender.Address().String(),
-		IsError: false,
+		InnerTxBasic: vm.InnerTxBasic{
+			Dept:    *big.NewInt(0),
+			From:    sender.Address().String(),
+			IsError: false,
+		},
 	}
 	st.evm.InnerTxies = append(st.evm.InnerTxies, callTx)
 	//add InnerTx end
 	if contractCreation {
 		var newAddr common.Address
 		//addToAddress
+		fromNonce := st.state.GetNonce(sender.Address())
 		ret, newAddr, st.gas, vmerr = st.evm.Create(sender, st.data, st.gas, st.value)
 		callTx.To = newAddr.String()
+		callTx.FromNonce = fromNonce
 		//addToAddressEnd
 	} else {
 		// Increment the nonce for the next transaction

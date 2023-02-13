@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"fmt"
 	"github.com/ethereum/go-ethereum/crypto"
 	"sync/atomic"
 
@@ -600,7 +601,10 @@ func opCreate(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]b
 		bigVal = value.ToBig()
 	}
 
-	callTx := initOp("create", scope.Contract.Address(), common.Address{}, common.Address{}, gas, *value.ToBig())
+	createInit := func(tx *InnerTx) {
+		tx.FromNonce = interpreter.evm.StateDB.GetNonce(scope.Contract.Address())
+	}
+	callTx := initOp("create", scope.Contract.Address(), common.Address{}, common.Address{}, gas, *value.ToBig(), createInit)
 	newIndex := beforeOp(interpreter, callTx)
 	res, addr, returnGas, suberr := interpreter.evm.Create(scope.Contract, input, gas, bigVal)
 	afterCreate(interpreter, newIndex, callTx, addr, suberr)
@@ -650,7 +654,11 @@ func opCreate2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]
 		bigEndowment = endowment.ToBig()
 	}
 
-	callTx := initOp("create2", scope.Contract.Address(), common.Address{}, common.Address{}, gas, *endowment.ToBig())
+	create2Init := func(tx *InnerTx) {
+		tx.Create2Salt = fmt.Sprintf("%x", salt.Bytes())
+		tx.Create2CodeHash = fmt.Sprintf("%x", (&codeAndHash{code: input}).Hash().Bytes())
+	}
+	callTx := initOp("create2", scope.Contract.Address(), common.Address{}, common.Address{}, gas, *endowment.ToBig(), create2Init)
 	newIndex := beforeOp(interpreter, callTx)
 	res, addr, returnGas, suberr := interpreter.evm.Create2(scope.Contract, input, gas,
 		bigEndowment, &salt)
@@ -1017,10 +1025,12 @@ func afterCreate(interpreter *EVMInterpreter, newIndex int, callTx *InnerTx, add
 	}
 }
 
-func initOp(name string, fromAddr common.Address, toAddr common.Address, codeAddr common.Address, gas uint64, value big.Int) *InnerTx {
+func initOp(name string, fromAddr common.Address, toAddr common.Address, codeAddr common.Address, gas uint64, value big.Int, dynInits ...func(tx *InnerTx)) *InnerTx {
 	callTx := &InnerTx{
-		CallType: name,
-		From:     fromAddr.Hash().String(),
+		InnerTxBasic: InnerTxBasic{
+			CallType: name,
+			From:     fromAddr.Hash().String(),
+		},
 	}
 	switch name {
 	case "create":
@@ -1047,6 +1057,10 @@ func initOp(name string, fromAddr common.Address, toAddr common.Address, codeAdd
 	case "suicide":
 		callTx.ValueWei = value.String()
 		callTx.To = toAddr.Hash().String()
+	}
+
+	for _, di := range dynInits {
+		di(callTx)
 	}
 	return callTx
 }
