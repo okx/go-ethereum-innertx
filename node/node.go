@@ -190,7 +190,7 @@ func (n *Node) Start() error {
 		return err
 	}
 	//初始化内部交易数据库
-	err = vm.InitDB(n.config.DataDir, vm.GoLevelDBBackend)
+	err = vm.InitDB(n.config.DataDir, vm.DefaultCreator())
 	if err != nil {
 		n.doClose(nil)
 		return err
