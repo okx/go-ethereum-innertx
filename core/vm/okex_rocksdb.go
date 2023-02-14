@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/tecbot/gorocksdb"
+	"github.com/okex/gorocksdb"
 )
 
 func init() {
