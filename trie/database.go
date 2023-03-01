@@ -87,10 +87,9 @@ type Database struct {
 	childrenSize common.StorageSize // Storage size of the external children tracking
 	preimages    *preimageStore     // The store for caching preimages
 
-
-  cacheMergedNodeSet *MergedNodeSet
-	lock       sync.RWMutex
-	statistics *RuntimeState // The runtime statistics
+	cacheMergedNodeSet *MergedNodeSet
+	lock               sync.RWMutex
+	statistics         *RuntimeState // The runtime statistics
 }
 
 // rawNode is a simple binary blob used to differentiate between collapsed trie
