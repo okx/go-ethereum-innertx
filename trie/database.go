@@ -87,9 +87,8 @@ type Database struct {
 	childrenSize common.StorageSize // Storage size of the external children tracking
 	preimages    *preimageStore     // The store for caching preimages
 
-	cacheMergedNodeSet *MergedNodeSet
-	lock               sync.RWMutex
-	statistics         *RuntimeState // The runtime statistics
+	lock       sync.RWMutex
+	statistics *RuntimeState // The runtime statistics
 }
 
 // rawNode is a simple binary blob used to differentiate between collapsed trie
@@ -825,18 +824,10 @@ func (db *Database) Update(nodes *MergedNodeSet) error {
 	return nil
 }
 
-func (db *Database) SetCacheNodeSet(set *NodeSet) error {
-	if db.cacheMergedNodeSet == nil {
-		db.cacheMergedNodeSet = NewMergedNodeSet()
-	}
-	return db.cacheMergedNodeSet.Merge(set)
-}
-
-func (db *Database) UpdateForOKC(accRetrieval func([]byte) common.Hash) error {
+func (db *Database) UpdateForOK(nodes *MergedNodeSet, accRetrieval func([]byte) common.Hash) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
-	nodes := db.cacheMergedNodeSet
 	// Insert dirty nodes into the database. In the same tree, it must be
 	// ensured that children are inserted first, then parent so that children
 	// can be linked with their parent correctly.
@@ -872,9 +863,6 @@ func (db *Database) UpdateForOKC(accRetrieval func([]byte) common.Hash) error {
 				db.reference(storageRoot, n.parent)
 			}
 		}
-	}
-	for k, _ := range nodes.sets {
-		delete(nodes.sets, k)
 	}
 	return nil
 }
