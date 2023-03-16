@@ -17,7 +17,9 @@
 package trie
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/ethereum/go-ethereum/rlp"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -34,6 +36,7 @@ type leaf struct {
 type committer struct {
 	nodes       *NodeSet
 	collectLeaf bool
+	saveNode    map[string][]byte
 }
 
 // newCommitter creates a new committer or picks one from the pool.
@@ -41,16 +44,92 @@ func newCommitter(owner common.Hash, collectLeaf bool) *committer {
 	return &committer{
 		nodes:       NewNodeSet(owner),
 		collectLeaf: collectLeaf,
+		saveNode:    map[string][]byte{},
 	}
+}
+
+func (c *committer) SetDelta(delta *MptDelta) {
+	for _, d := range delta.NodeDelta {
+		c.saveNode[d.Key] = d.Val
+	}
+}
+
+func (c *committer) GetDelta() *MptDelta {
+	delta := make([]*NodeDelta, 0, len(c.saveNode))
+	for k, v := range c.saveNode {
+		delta = append(delta, &NodeDelta{k, v})
+	}
+	return &MptDelta{NodeDelta: delta}
 }
 
 // Commit collapses a node down into a hash node and inserts it into the database
 func (c *committer) Commit(n node) (hashNode, *NodeSet, error) {
-	h, err := c.commit(nil, n)
+	var h node
+	var err error
+	if len(c.saveNode) > 0 {
+		rootHash := c.saveNode["root"]
+		h, err = c.commitWithDelta(nil, rootHash)
+	} else {
+		switch cn := n.(type) {
+		case *shortNode:
+			c.saveNode["root"] = cn.flags.hash
+		case *fullNode:
+			c.saveNode["root"] = cn.flags.hash
+		case hashNode:
+			c.saveNode["root"] = cn
+		default:
+			// nil, valuenode shouldn't be committed
+			panic(fmt.Sprintf("%T: invalid node: %v", n, n))
+		}
+		h, err = c.commit(nil, n)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
 	return h.(hashNode), c.nodes, nil
+}
+
+func (c *committer) commitWithDelta(path, nodeHash []byte) (node, error) {
+	if c.saveNode[string(nodeHash)] == nil {
+		var hn hashNode = nodeHash
+		return hn, nil
+	}
+	n := mustDecodeNode(nodeHash, c.saveNode[string(nodeHash)])
+	// Commit children, then parent, and remove remove the dirty flag.
+	switch cn := n.(type) {
+	case *shortNode:
+		// If the child is fullnode, recursively commit.
+		// Otherwise it can only be hashNode or valueNode.
+		if h, ok := cn.Val.(*hashNode); ok {
+			_, err := c.commitWithDelta(append(path, cn.Key...), *h)
+			if err != nil {
+				return nil, err
+			}
+		}
+		// The key needs to be copied, since we're delivering it to database
+		cn.Key = hexToCompact(cn.Key)
+		hashedNode := c.store(path, cn)
+		if hn, ok := hashedNode.(hashNode); ok {
+			return hn, nil
+		}
+		return cn, nil
+	case *fullNode:
+		err := c.commitChildrenWithDelta(path, cn)
+		if err != nil {
+			return nil, err
+		}
+
+		hashedNode := c.store(path, cn)
+		if hn, ok := hashedNode.(hashNode); ok {
+			return hn, nil
+		}
+		return cn, nil
+	case hashNode:
+		return cn, nil
+	default:
+		// nil, valuenode shouldn't be committed
+		panic(fmt.Sprintf("%T: invalid node: %v", n, n))
+	}
 }
 
 // commit collapses a node down into a hash node and inserts it into the database
@@ -77,6 +156,14 @@ func (c *committer) commit(path []byte, n node) (node, error) {
 		}
 		// The key needs to be copied, since we're delivering it to database
 		collapsed.Key = hexToCompact(cn.Key)
+
+		// for dds producer
+		var w bytes.Buffer
+		if err := rlp.Encode(&w, collapsed); err != nil {
+			panic("encode error: " + err.Error())
+		}
+		c.saveNode[string(collapsed.flags.hash)] = w.Bytes()
+
 		hashedNode := c.store(path, collapsed)
 		if hn, ok := hashedNode.(hashNode); ok {
 			return hn, nil
@@ -101,6 +188,26 @@ func (c *committer) commit(path []byte, n node) (node, error) {
 		// nil, valuenode shouldn't be committed
 		panic(fmt.Sprintf("%T: invalid node: %v", n, n))
 	}
+}
+
+func (c *committer) commitChildrenWithDelta(path []byte, n *fullNode) error {
+	for i := 0; i < 16; i++ {
+		child := n.Children[i]
+		fmt.Println("child:", child)
+		if child == nil {
+			continue
+		}
+		// If it's the hashed child, save the hash value directly.
+		// Note: it's impossible that the child in range [0, 15]
+		// is a valuenode.
+		if hn, ok := child.(hashNode); ok {
+			_, err := c.commitWithDelta(path, hn)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // commitChildren commits the children of the given fullnode
