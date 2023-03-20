@@ -177,6 +177,13 @@ func (c *committer) commit(path []byte, n node) (node, error) {
 		collapsed := cn.copy()
 		collapsed.Children = hashedKids
 
+		// for dds producer
+		var w bytes.Buffer
+		if err := collapsed.EncodeRLP(&w); err != nil {
+			panic("encode error: " + err.Error())
+		}
+		c.saveNode[string(collapsed.flags.hash)] = w.Bytes()
+
 		hashedNode := c.store(path, collapsed)
 		if hn, ok := hashedNode.(hashNode); ok {
 			return hn, nil
@@ -193,7 +200,6 @@ func (c *committer) commit(path []byte, n node) (node, error) {
 func (c *committer) commitChildrenWithDelta(path []byte, n *fullNode) error {
 	for i := 0; i < 16; i++ {
 		child := n.Children[i]
-		fmt.Println("child:", child)
 		if child == nil {
 			continue
 		}
