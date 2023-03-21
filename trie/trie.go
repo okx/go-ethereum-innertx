@@ -642,7 +642,7 @@ func (t *Trie) CommitWithDelta(inputDelta *MptDelta, collectLeaf bool) (common.H
 		return common.Hash{}, nil, err
 	}
 	t.root = newRoot
-	return rootHash, nodes, nil
+	return t.Hash(), nodes, nil
 }
 
 func (t *Trie) CommitForDelta(collectLeaf bool) (root common.Hash, nodes *NodeSet, delta *MptDelta, err error) {
