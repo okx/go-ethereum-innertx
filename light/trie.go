@@ -168,14 +168,14 @@ func (t *odrTrie) Commit(collectLeaf bool) (common.Hash, *trie.NodeSet, error) {
 	return t.trie.Commit(collectLeaf)
 }
 
-func (t *odrTrie) CommitForDelta(collectLeaf bool) (common.Hash, *trie.NodeSet, *trie.MptDelta, error) {
+func (t *odrTrie) CommitForDelta(collectLeaf bool) (common.Hash, *trie.NodeSet, []*trie.NodeDelta, error) {
 	if t.trie == nil {
 		return t.id.Root, nil, nil, nil
 	}
 	return t.trie.CommitForDelta(collectLeaf)
 }
 
-func (t *odrTrie) CommitWithDelta(inputDelta *trie.MptDelta, collectLeaf bool) (common.Hash, *trie.NodeSet, error) {
+func (t *odrTrie) CommitWithDelta(inputDelta []*trie.NodeDelta, collectLeaf bool) (common.Hash, *trie.NodeSet, error) {
 	if t.trie == nil {
 		return t.id.Root, nil, nil
 	}

@@ -235,12 +235,12 @@ func (t *StateTrie) Commit(collectLeaf bool) (common.Hash, *NodeSet, error) {
 	return t.trie.Commit(collectLeaf)
 }
 
-func (t *StateTrie) CommitForDelta(collectLeaf bool) (common.Hash, *NodeSet, *MptDelta, error) {
+func (t *StateTrie) CommitForDelta(collectLeaf bool) (common.Hash, *NodeSet, []*NodeDelta, error) {
 	t.preCommit()
 	return t.trie.CommitForDelta(collectLeaf)
 }
 
-func (t *StateTrie) CommitWithDelta(inputDelta *MptDelta, collectLeaf bool) (common.Hash, *NodeSet, error) {
+func (t *StateTrie) CommitWithDelta(inputDelta []*NodeDelta, collectLeaf bool) (common.Hash, *NodeSet, error) {
 	t.preCommit()
 	// Commit the trie to its intermediate node database
 	return t.trie.CommitWithDelta(inputDelta, collectLeaf)

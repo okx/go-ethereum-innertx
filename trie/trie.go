@@ -615,7 +615,7 @@ func (t *Trie) Commit(collectLeaf bool) (common.Hash, *NodeSet, error) {
 	return rootHash, nodes, nil
 }
 
-func (t *Trie) CommitWithDelta(inputDelta *MptDelta, collectLeaf bool) (common.Hash, *NodeSet, error) {
+func (t *Trie) CommitWithDelta(inputDelta []*NodeDelta, collectLeaf bool) (common.Hash, *NodeSet, error) {
 	defer t.tracer.reset()
 
 	if t.root == nil {
@@ -645,7 +645,7 @@ func (t *Trie) CommitWithDelta(inputDelta *MptDelta, collectLeaf bool) (common.H
 	return t.Hash(), nodes, nil
 }
 
-func (t *Trie) CommitForDelta(collectLeaf bool) (root common.Hash, nodes *NodeSet, delta *MptDelta, err error) {
+func (t *Trie) CommitForDelta(collectLeaf bool) (root common.Hash, nodes *NodeSet, delta []*NodeDelta, err error) {
 	defer t.tracer.reset()
 
 	if t.root == nil {

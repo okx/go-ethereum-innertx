@@ -48,18 +48,18 @@ func newCommitter(owner common.Hash, collectLeaf bool) *committer {
 	}
 }
 
-func (c *committer) SetDelta(delta *MptDelta) {
-	for _, d := range delta.NodeDelta {
+func (c *committer) SetDelta(delta []*NodeDelta) {
+	for _, d := range delta {
 		c.saveNode[d.Key] = d.Val
 	}
 }
 
-func (c *committer) GetDelta() *MptDelta {
+func (c *committer) GetDelta() []*NodeDelta {
 	delta := make([]*NodeDelta, 0, len(c.saveNode))
 	for k, v := range c.saveNode {
 		delta = append(delta, &NodeDelta{k, v})
 	}
-	return &MptDelta{NodeDelta: delta}
+	return delta
 }
 
 // Commit collapses a node down into a hash node and inserts it into the database

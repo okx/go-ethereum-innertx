@@ -1,10 +1,19 @@
 package trie
 
-import "github.com/tendermint/go-amino"
+import (
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/tendermint/go-amino"
+)
 
 type MptDeltaMap map[string]*MptDelta
 
 type MptDelta struct {
+	NodeDelta []*NodeDelta    `json:"node_delta"`
+	Storage   []*StorageDelta `json:"storage"`
+}
+
+type StorageDelta struct {
+	Addr      common.Address
 	NodeDelta []*NodeDelta `json:"node_delta"`
 }
 
