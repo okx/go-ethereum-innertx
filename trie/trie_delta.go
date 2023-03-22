@@ -13,8 +13,9 @@ type MptDelta struct {
 }
 
 type StorageDelta struct {
-	Addr      common.Address
-	NodeDelta []*NodeDelta `json:"node_delta"`
+	Addr      common.Address `json:"addr"`
+	PreAcc    []byte         `json:"pre_acc"`
+	NodeDelta []*NodeDelta   `json:"node_delta"`
 }
 
 type NodeDelta struct {
