@@ -202,7 +202,7 @@ func generateTrieRootCustom(db ethdb.KeyValueWriter, it Iterator, account common
 				//	return stop(err)
 				//}
 			}
-			leaf = trieKV{it.Hash(), fullData}
+			leaf = trieKV{it.Hash(), common.CopyBytes(fullData)}
 		} else {
 			leaf = trieKV{it.Hash(), common.CopyBytes(it.(StorageIterator).Slot())}
 		}
