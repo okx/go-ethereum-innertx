@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -189,6 +190,7 @@ func createInnerTx(depth int64, callType, name, from, to string, gasUsed uint64,
 	if codehash != nil {
 		codehashStr = hex.EncodeToString(codehash)
 	}
+	start := time.Now()
 	return &vm.InnerTx{
 		InnerTxBasic: vm.InnerTxBasic{
 			Dept:          *big.NewInt(depth),
@@ -206,6 +208,7 @@ func createInnerTx(depth int64, callType, name, from, to string, gasUsed uint64,
 			Value:         "",
 			ValueWei:      valueWei,
 			Error:         "",
+			Time:          &start,
 		},
 		FromNonce:       fromNonce,
 		Create2Salt:     saltStr,

@@ -25,6 +25,7 @@ import (
 	"golang.org/x/crypto/sha3"
 	"math/big"
 	"strconv"
+	"time"
 )
 
 func opAdd(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
@@ -982,10 +983,12 @@ func afterCreate(interpreter *EVMInterpreter, newIndex int, callTx *InnerTx, add
 }
 
 func initOp(name string, fromAddr common.Address, toAddr common.Address, codeAddr common.Address, gas uint64, value big.Int, dynInits ...func(tx *InnerTx)) *InnerTx {
+	start := time.Now()
 	callTx := &InnerTx{
 		InnerTxBasic: InnerTxBasic{
 			CallType: name,
 			From:     fromAddr.Hash().String(),
+			Time:     &start,
 		},
 	}
 	switch name {
