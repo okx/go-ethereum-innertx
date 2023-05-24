@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	cmath "github.com/ethereum/go-ethereum/common/math"
@@ -314,13 +315,14 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		ret   []byte
 		vmerr error // vm errors do not effect consensus and are therefore not assigned to err
 	)
-
+	start := time.Now()
 	//add InnerTx
 	callTx := &vm.InnerTx{
 		InnerTxBasic: vm.InnerTxBasic{
 			Dept:    *big.NewInt(0),
 			From:    sender.Address().String(),
 			IsError: false,
+			Time:    &start,
 		},
 	}
 	st.evm.InnerTxies = append(st.evm.InnerTxies, callTx)

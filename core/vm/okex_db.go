@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -94,7 +95,8 @@ func ReadToken(key []byte) []byte {
 	return rtn
 }
 
-func WriteTx(hash string, ix []*InnerTxBasic) error {
+func WriteTx(hash string, ix innertxs) error {
+	sort.Sort(ix)
 	row, _ := rlp.EncodeToBytes(ix)
 	err := txDB.Set([]byte(hash), row)
 	if err != nil {
