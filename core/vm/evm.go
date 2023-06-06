@@ -121,6 +121,16 @@ type EVM struct {
 	// available gas is calculated in gasCall* according to the 63/64 rule and later
 	// applied in opCall*.
 	callGasTemp uint64
+
+	index int
+
+	lastDepth int
+
+	indexMap map[int]int
+
+	InnerTxies []*InnerTx
+
+	Contracts []*ERC20Contract
 }
 
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
@@ -133,6 +143,12 @@ func NewEVM(blockCtx BlockContext, txCtx TxContext, statedb StateDB, chainConfig
 		Config:      config,
 		chainConfig: chainConfig,
 		chainRules:  chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Random != nil),
+		depth:       0,
+		index:       0,
+		lastDepth:   0,
+		indexMap:    map[int]int{0: 0},
+		InnerTxies:  make([]*InnerTx, 0),
+		Contracts:   make([]*ERC20Contract, 0),
 	}
 	evm.interpreter = NewEVMInterpreter(evm, config)
 	return evm
@@ -143,6 +159,13 @@ func NewEVM(blockCtx BlockContext, txCtx TxContext, statedb StateDB, chainConfig
 func (evm *EVM) Reset(txCtx TxContext, statedb StateDB) {
 	evm.TxContext = txCtx
 	evm.StateDB = statedb
+
+	evm.depth = 0
+	evm.index = 0
+	evm.lastDepth = 0
+	evm.indexMap = map[int]int{0: 0}
+	evm.InnerTxies = make([]*InnerTx, 0)
+	evm.Contracts = make([]*ERC20Contract, 0)
 }
 
 // Cancel cancels any running EVM operation. This may be called concurrently and
@@ -545,3 +568,11 @@ func (evm *EVM) Create2(caller ContractRef, code []byte, gas uint64, endowment *
 
 // ChainConfig returns the environment's chain configuration
 func (evm *EVM) ChainConfig() *params.ChainConfig { return evm.chainConfig }
+
+func (evm *EVM) GetDepth() int {
+	return evm.depth
+}
+
+func (evm *EVM) GetIndex() int {
+	return evm.index
+}
